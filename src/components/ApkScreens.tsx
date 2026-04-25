@@ -2106,8 +2106,8 @@ function SecurityModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: ()
   );
 }
 
-function Divider() {
-  return <div className="h-px bg-outlineVariant/50" />;
+function Divider({ className }: { className?: string }) {
+  return <div className={cn("h-px bg-outlineVariant/50", className)} />;
 }
 
 function Switch({ checked, onChange }: { checked: boolean; onChange: () => void }) {
