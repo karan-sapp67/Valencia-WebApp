@@ -77,6 +77,7 @@ import {
   sendReset,
   toggleNotifications,
   updateAvatar,
+  updateFullName,
   updateTask,
   useCurrentUser,
   useNotifications,
