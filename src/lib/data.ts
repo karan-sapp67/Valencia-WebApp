@@ -9,6 +9,8 @@ import {
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
 } from "firebase/auth";
 import {
@@ -300,24 +302,39 @@ export async function loginUser(email: string, password: string) {
 export async function loginWithGoogle() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  const result = await signInWithPopup(auth, provider);
-  const user = result.user;
-  if (!user.email) return;
 
-  const ref = doc(db, "users", user.email);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      email: user.email,
-      password: "",
-      fullName: user.displayName ?? "New Intern",
-      role: "Intern",
-      credits: 0,
-      profilePictureUrl: user.photoURL,
-      transactions: [],
-      completedTaskDates: {},
-      notificationsEnabled: true,
-    });
+  try {
+    // For mobile browsers, popups are often blocked.
+    // We'll try popup first, but you can also use signInWithRedirect if preferred.
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+    if (!user.email) return;
+
+    const ref = doc(db, "users", user.email);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        email: user.email,
+        password: "",
+        fullName: user.displayName ?? "New Intern",
+        role: "Intern",
+        credits: 0,
+        profilePictureUrl: user.photoURL,
+        transactions: [],
+        completedTaskDates: {},
+        notificationsEnabled: true,
+      });
+    }
+  } catch (error: any) {
+    if (error.code === 'auth/popup-blocked') {
+      // Fallback to redirect if popup is blocked
+      await signInWithRedirect(auth, provider);
+    } else {
+      console.error("Google Login Error:", error);
+      throw error;
+    }
+  }
+}
   }
 }
 
