@@ -188,6 +188,29 @@ export function useCurrentUser() {
   const [state, setState] = useState<LoadingState<UserModel | null>>({ data: null, loading: true });
 
   useEffect(() => {
+    // Check for redirect result when the hook mounts
+    getRedirectResult(auth).then(async (result) => {
+      if (result?.user && result.user.email) {
+        const user = result.user;
+        const ref = doc(db, "users", user.email);
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+          await setDoc(ref, {
+            email: user.email,
+            password: "",
+            fullName: user.displayName ?? "New Intern",
+            role: "Intern",
+            credits: 0,
+            transactions: [],
+            profilePictureUrl: "0",
+            notificationTokens: [],
+            isBlocked: false,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+    }).catch(err => console.error("Redirect login error:", err));
+
     if (authLoading) return;
     if (!user?.email) {
       setState({ data: null, loading: false });
@@ -304,11 +327,11 @@ export async function loginWithGoogle() {
   provider.setCustomParameters({ prompt: "select_account" });
 
   try {
-    // For mobile browsers, popups are often blocked.
-    // We'll try popup first, but you can also use signInWithRedirect if preferred.
-    const result = await signInWithPopup(auth, provider);
-    const user = result.user;
-    if (!user.email) return;
+    // Use signInWithRedirect for better mobile/web compatibility
+    // result = await signInWithPopup(auth, provider);
+    await signInWithRedirect(auth, provider);
+    // Note: The rest of this function will run after the redirect back to the app
+    // Handling the result is usually done in an observer or a specific handler
 
     const ref = doc(db, "users", user.email);
     const snap = await getDoc(ref);
