@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getMessaging, isSupported } from "firebase/messaging";
 
@@ -15,7 +15,12 @@ const firebaseConfig = {
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+
+// Use initializeFirestore with settings to bypass aggressive ad-blockers
+const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true, // Forces HTTP instead of WebSockets
+});
+
 const storage = getStorage(app);
 
 // Messaging is only supported in browser environments with Service Worker support

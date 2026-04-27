@@ -1826,6 +1826,10 @@ export function ProfileScreen({ admin = false }: { admin?: boolean }) {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
 
+  useEffect(() => {
+    setLight(document.documentElement.classList.contains("light"));
+  }, []);
+
   if (loading || !userData) return <LoadingScreen />;
   if (admin && userData.role !== "Admin") {
     router.replace("/dashboard");
@@ -1835,8 +1839,22 @@ export function ProfileScreen({ admin = false }: { admin?: boolean }) {
   function toggleThemeLocal() {
     const next = !light;
     setLight(next);
-    document.documentElement.classList.toggle("light", next);
-    localStorage.setItem("theme", next ? "light" : "dark");
+
+    const updateTheme = () => {
+      document.documentElement.classList.toggle("light", next);
+      localStorage.setItem("theme", next ? "light" : "dark");
+    };
+
+    if (!document.startViewTransition) {
+      updateTheme();
+      return;
+    }
+
+    document.documentElement.classList.add("theme-transitioning");
+    const transition = document.startViewTransition(updateTheme);
+    transition.finished.finally(() => {
+      document.documentElement.classList.remove("theme-transitioning");
+    });
   }
 
   return (

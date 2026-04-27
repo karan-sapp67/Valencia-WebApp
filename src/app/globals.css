@@ -361,3 +361,29 @@ button {
   background-size: 200% 100%;
   animation: skeleton-wave 1.5s ease-in-out infinite;
 }
+
+/* Elegant Theme Transition */
+.theme-transitioning::view-transition-old(root),
+.theme-transitioning::view-transition-new(root) {
+  animation-duration: 0.6s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  mix-blend-mode: normal;
+}
+
+.theme-transitioning::view-transition-old(root) {
+  animation-name: theme-fade-out;
+}
+
+.theme-transitioning::view-transition-new(root) {
+  animation-name: theme-fade-in;
+}
+
+@keyframes theme-fade-in {
+  from { opacity: 0; filter: blur(8px); }
+  to { opacity: 1; filter: blur(0px); }
+}
+
+@keyframes theme-fade-out {
+  from { opacity: 1; filter: blur(0px); }
+  to { opacity: 0; filter: blur(8px); }
+}

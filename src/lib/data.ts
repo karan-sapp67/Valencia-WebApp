@@ -188,43 +188,66 @@ export function useCurrentUser() {
   const [state, setState] = useState<LoadingState<UserModel | null>>({ data: null, loading: true });
 
   useEffect(() => {
-    // Check for redirect result when the hook mounts
-    getRedirectResult(auth).then(async (result) => {
-      if (result?.user && result.user.email) {
-        const user = result.user;
-        const ref = doc(db, "users", user.email);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) {
-          await setDoc(ref, {
-            email: user.email,
-            password: "",
-            fullName: user.displayName ?? "New Intern",
-            role: "Intern",
-            credits: 0,
-            transactions: [],
-            profilePictureUrl: "0",
-            notificationTokens: [],
-            isBlocked: false,
-            createdAt: new Date().toISOString(),
-          });
-        }
-      }
-    }).catch(err => console.error("Redirect login error:", err));
-
     if (authLoading) return;
-    if (!user?.email) {
+
+    // Check if we have a "typed email" in session storage to enforce strict casing
+    const sessionEmail = typeof window !== "undefined" ? sessionStorage.getItem("auth_email") : null;
+    const userEmail = sessionEmail || user?.email;
+
+    if (!userEmail) {
       setState({ data: null, loading: false });
       return;
     }
 
-    const ref = doc(db, "users", user.email);
-    return onSnapshot(
-      ref,
-      (snap) => {
-        setState({ data: snap.exists() ? normalizeUser(snap.data(), snap.id) : null, loading: false });
-      },
-      (error) => setState({ data: null, loading: false, error: error.message }),
-    );
+    const tryFetchUser = async () => {
+      try {
+        const usersSnap = await getDocs(collection(db, "users"));
+        const matched = usersSnap.docs.find(d => 
+          d.id.toLowerCase() === userEmail.toLowerCase() || 
+          (typeof d.data().email === 'string' && d.data().email.toLowerCase() === userEmail.toLowerCase())
+        );
+
+        if (!matched) {
+          signOut(auth);
+          sessionStorage.removeItem("auth_email");
+          setState({ data: null, loading: false });
+          return;
+        }
+
+        const exactId = matched.id;
+        if (exactId !== sessionEmail) {
+          sessionStorage.setItem("auth_email", exactId);
+        }
+
+        const ref = doc(db, "users", exactId);
+
+        return onSnapshot(
+          ref,
+          (snapshot) => {
+            if (snapshot.exists()) {
+              setState({ data: normalizeUser(snapshot.data(), snapshot.id), loading: false });
+            } else {
+              signOut(auth);
+              sessionStorage.removeItem("auth_email");
+              setState({ data: null, loading: false });
+            }
+          },
+          (error) => setState({ data: null, loading: false, error: error.message }),
+        );
+      } catch (error: any) {
+        console.error("Error fetching user data:", error);
+        setState({ data: null, loading: false, error: error.message });
+      }
+    };
+
+    let unsubscribe: (() => void) | undefined;
+    tryFetchUser().then(unsub => {
+      unsubscribe = unsub;
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [authLoading, user?.email]);
 
   return { user, userData: state.data, loading: authLoading || state.loading, error: state.error };
@@ -303,9 +326,10 @@ export function useInterns() {
 }
 
 export async function registerUser(fullName: string, email: string, password: string) {
-  await createUserWithEmailAndPassword(auth, email, password);
-  await setDoc(doc(db, "users", email), {
-    email,
+  const cleanEmail = email.trim().toLowerCase();
+  await createUserWithEmailAndPassword(auth, cleanEmail, password);
+  await setDoc(doc(db, "users", cleanEmail), {
+    email: cleanEmail,
     password,
     fullName,
     role: "Intern",
@@ -319,47 +343,42 @@ export async function registerUser(fullName: string, email: string, password: st
 }
 
 export async function loginUser(email: string, password: string) {
-  await signInWithEmailAndPassword(auth, email, password);
+  const inputEmail = email.trim();
+
+  const userCredential = await signInWithEmailAndPassword(auth, inputEmail, password);
+  const user = userCredential.user;
+
+  if (user) {
+    const usersSnap = await getDocs(collection(db, "users"));
+    const matched = usersSnap.docs.find(d => 
+      d.id.toLowerCase() === inputEmail.toLowerCase() || 
+      (typeof d.data().email === 'string' && d.data().email.toLowerCase() === inputEmail.toLowerCase())
+    );
+
+    if (!matched) {
+      await signOut(auth);
+      throw new Error("Invalid credentials. Account setup incomplete.");
+    }
+
+    sessionStorage.setItem("auth_email", matched.id);
+  }
 }
 
 export async function loginWithGoogle() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
+  sessionStorage.removeItem("auth_email"); // Google handles its own casing
 
   try {
-    // Use signInWithRedirect for better mobile/web compatibility
-    // result = await signInWithPopup(auth, provider);
     await signInWithRedirect(auth, provider);
-    // Note: The rest of this function will run after the redirect back to the app
-    // Handling the result is usually done in an observer or a specific handler
-
-    const ref = doc(db, "users", user.email);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
-      await setDoc(ref, {
-        email: user.email,
-        password: "",
-        fullName: user.displayName ?? "New Intern",
-        role: "Intern",
-        credits: 0,
-        profilePictureUrl: user.photoURL,
-        transactions: [],
-        completedTaskDates: {},
-        notificationsEnabled: true,
-      });
-    }
   } catch (error: any) {
-    if (error.code === 'auth/popup-blocked') {
-      // Fallback to redirect if popup is blocked
-      await signInWithRedirect(auth, provider);
-    } else {
-      console.error("Google Login Error:", error);
-      throw error;
-    }
+    console.error("Google Login Error:", error);
+    throw error;
   }
 }
 
 export async function logoutUser() {
+  sessionStorage.removeItem("auth_email");
   await signOut(auth);
 }
 
