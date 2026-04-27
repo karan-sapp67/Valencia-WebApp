@@ -664,16 +664,23 @@ function useProtectedUser() {
 function useProtectedAdmin() {
   const router = useRouter();
   const auth = useCurrentUser();
+
   React.useEffect(() => {
     if (auth.loading) return;
+
     if (!auth.userData) {
+      // Not logged in or no Firestore profile
       router.replace("/admin/login");
       return;
     }
+
     if (auth.userData.role !== "Admin") {
+      // Logged in but not an admin
+      console.warn("Access denied: User is not an admin", auth.userData.email);
       router.replace("/dashboard");
     }
   }, [auth.loading, auth.userData, router]);
+
   return auth;
 }
 
@@ -861,10 +868,22 @@ export function RoleSelectorScreen() {
 
 export function SignInScreen() {
   const router = useRouter();
+  const auth = useCurrentUser();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+
+  // Auto-redirect if already logged in
+  useEffect(() => {
+    if (!auth.loading && auth.userData) {
+      if (auth.userData.role === "Admin") {
+        router.replace("/admin/dashboard");
+      } else {
+        router.replace("/dashboard");
+      }
+    }
+  }, [auth.loading, auth.userData, router]);
 
   async function handleSignIn() {
     if (!email || !password) {
@@ -923,12 +942,14 @@ export function SignInScreen() {
 
         <button
           type="button"
-          disabled={loading}
+          disabled={loading || auth.loading}
           onClick={async () => {
             setLoading(true);
             try {
               await loginWithGoogle();
-              router.push("/dashboard");
+              // The useCurrentUser effect will handle redirection
+            } catch (err: any) {
+              setMessage(err.message || "Google login failed.");
             } finally {
               setLoading(false);
             }
@@ -2323,10 +2344,22 @@ export function TaskSubmitScreen({ taskId }: { taskId?: string }) {
 
 export function AdminLoginScreen() {
   const router = useRouter();
+  const auth = useCurrentUser();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+
+  // Auto-redirect if already logged in
+  useEffect(() => {
+    if (!auth.loading && auth.userData) {
+      if (auth.userData.role === "Admin") {
+        router.replace("/admin/dashboard");
+      } else {
+        router.replace("/dashboard");
+      }
+    }
+  }, [auth.loading, auth.userData, router]);
 
   async function handleResetPassword() {
     if (!email.trim()) {
@@ -2384,14 +2417,14 @@ export function AdminLoginScreen() {
         <AppButton className="mt-12" disabled={loading} onClick={handleLogin}>{loading ? "Authenticating..." : "Login to Management"}</AppButton>
         <button
           type="button"
-          disabled={loading}
+          disabled={loading || auth.loading}
           onClick={async () => {
             setLoading(true);
             try {
               await loginWithGoogle();
-              router.push("/admin/dashboard");
-            } catch {
-              setMessage("Google login failed.");
+              // The useCurrentUser effect will handle redirection
+            } catch (err: any) {
+              setMessage(err.message || "Google login failed.");
             } finally {
               setLoading(false);
             }

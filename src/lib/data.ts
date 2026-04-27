@@ -195,19 +195,24 @@ export function useCurrentUser() {
     const userEmail = sessionEmail || user?.email;
 
     if (!userEmail) {
+      console.log("[useCurrentUser] No sessionEmail or user.email found.");
       setState({ data: null, loading: false });
       return;
     }
 
     const tryFetchUser = async () => {
       try {
+        console.log("[useCurrentUser] Attempting match for:", userEmail);
         const usersSnap = await getDocs(collection(db, "users"));
-        const matched = usersSnap.docs.find(d => 
+
+        // Match case-insensitively first to find the canonical document ID
+        const matched = usersSnap.docs.find(d =>
           d.id.toLowerCase() === userEmail.toLowerCase() || 
           (typeof d.data().email === 'string' && d.data().email.toLowerCase() === userEmail.toLowerCase())
         );
 
         if (!matched) {
+          console.warn("[useCurrentUser] No match found in Firestore for:", userEmail);
           signOut(auth);
           sessionStorage.removeItem("auth_email");
           setState({ data: null, loading: false });
@@ -215,7 +220,10 @@ export function useCurrentUser() {
         }
 
         const exactId = matched.id;
-        if (exactId !== sessionEmail) {
+        console.log("[useCurrentUser] Resolved to canonical ID:", exactId);
+
+        // Preserve the correct casing for future lookups
+        if (exactId !== sessionEmail && typeof window !== "undefined") {
           sessionStorage.setItem("auth_email", exactId);
         }
 
@@ -225,17 +233,22 @@ export function useCurrentUser() {
           ref,
           (snapshot) => {
             if (snapshot.exists()) {
+              console.log("[useCurrentUser] User data fetched successfully.");
               setState({ data: normalizeUser(snapshot.data(), snapshot.id), loading: false });
             } else {
+              console.error("[useCurrentUser] Document vanished:", exactId);
               signOut(auth);
               sessionStorage.removeItem("auth_email");
               setState({ data: null, loading: false });
             }
           },
-          (error) => setState({ data: null, loading: false, error: error.message }),
+          (error) => {
+            console.error("[useCurrentUser] Subscription error:", error);
+            setState({ data: null, loading: false, error: error.message });
+          },
         );
       } catch (error: any) {
-        console.error("Error fetching user data:", error);
+        console.error("[useCurrentUser] Fatal fetch error:", error);
         setState({ data: null, loading: false, error: error.message });
       }
     };
@@ -370,7 +383,8 @@ export async function loginWithGoogle() {
   sessionStorage.removeItem("auth_email"); // Google handles its own casing
 
   try {
-    await signInWithRedirect(auth, provider);
+    const result = await signInWithPopup(auth, provider);
+    return result;
   } catch (error: any) {
     console.error("Google Login Error:", error);
     throw error;
