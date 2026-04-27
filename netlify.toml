@@ -1,4 +1,3 @@
 [build]
-  base = "stitch_web"
   command = "npm run build"
   publish = ".next"
