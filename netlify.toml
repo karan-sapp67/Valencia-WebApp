@@ -1,10 +1,4 @@
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
-
 [build]
+  base = "stitch_web"
   command = "npm run build"
   publish = ".next"
-  base = "stitch_web"
-
-[build.environment]
-  NEXT_USE_NETLIFY_EDGE = "true"
