@@ -83,7 +83,6 @@ import {
   useNotifications,
   useTasks,
   useUsers,
-  useInterns,
 } from "@/lib/data";
 import { cn } from "@/lib/utils";
 import { AppNotification, TaskModel, UserModel, VaultTransaction } from "@/lib/types";
@@ -1820,11 +1819,10 @@ function ConfirmationModal({
 export function ProfileScreen({ admin = false }: { admin?: boolean }) {
   const router = useRouter();
   const { userData, loading } = useProtectedUser();
-  const internsState = useInterns();
-  const tasksState = useTasks();
   const [light, setLight] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [exportingReport, setExportingReport] = useState(false);
 
   useEffect(() => {
     setLight(document.documentElement.classList.contains("light"));
@@ -1942,10 +1940,20 @@ export function ProfileScreen({ admin = false }: { admin?: boolean }) {
                 <Divider className="opacity-50" />
                 <SettingsRow
                   icon={Download}
-                  title="Export Reports"
+                  title={exportingReport ? "Exporting Report" : "Export Reports"}
+                  right={exportingReport ? <RefreshCw size={18} className="animate-spin text-primary" /> : undefined}
                   onClick={async () => {
-                    const { generateInternReportCSV } = await import("@/lib/reports");
-                    generateInternReportCSV(internsState.data, tasksState.data);
+                    if (exportingReport) return;
+                    setExportingReport(true);
+                    try {
+                      const { exportLatestInternReportCSV } = await import("@/lib/reports");
+                      await exportLatestInternReportCSV();
+                    } catch (error) {
+                      console.error("Report export failed:", error);
+                      window.alert("Failed to export report. Please check your connection and try again.");
+                    } finally {
+                      setExportingReport(false);
+                    }
                   }}
                 />
                 <Divider className="opacity-50" />
@@ -2540,11 +2548,19 @@ export function InternDetailScreen({ internId }: { internId?: string }) {
   const router = useRouter();
   const auth = useProtectedAdmin();
   const users = useUsers();
+  const tasks = useTasks();
+
   if (auth.loading || !auth.userData || auth.userData.role !== "Admin") return <LoadingScreen />;
+
   const intern = users.data.find((user) => user.email === decodeURIComponent(internId ?? ""));
+
   if (!intern && users.loading) return <LoadingScreen />;
   if (!intern) return <Screen><SafeArea><BackHeader /><p className="mt-20 text-center text-onSurfaceVariant">Intern not found</p></SafeArea></Screen>;
+
   const pending = intern.transactions.filter((tx) => tx.status === "pending");
+  const internTasks = tasks.data.filter(t => !t.assignedUserEmails.length || t.assignedUserEmails.includes(intern.email));
+  const completedCount = internTasks.filter(t => completedForUser(t, intern)).length;
+
   return (
     <Screen>
       <SafeArea className="pt-0">
@@ -2560,12 +2576,22 @@ export function InternDetailScreen({ internId }: { internId?: string }) {
         </div>
         <div className="mt-12 grid grid-cols-2 gap-4">
           <DetailMetric title="Total Credits Earned" value={intern.credits.toLocaleString()} icon={Award} />
-          <DetailMetric title="Tasks Completed" value={`${intern.transactions.length}`} icon={CheckCircle} success />
+          <DetailMetric
+            title="Tasks Completed"
+            value={`${completedCount}/${internTasks.length}`}
+            icon={CheckCircle}
+            success
+            onClick={() => {
+              const el = document.getElementById('task-history');
+              el?.scrollIntoView({ behavior: 'smooth' });
+            }}
+          />
         </div>
+
         <h2 className="mt-10 text-2xl font-semibold">Pending Review</h2>
         <div className="mt-4 space-y-4">
           {pending.length === 0 ? (
-            <p className="py-8 text-center text-onSurfaceVariant">No pending submissions.</p>
+            <p className="py-8 text-center text-onSurfaceVariant text-sm">No pending submissions.</p>
           ) : (
             pending.map((tx) => (
               <ReviewItem
@@ -2578,14 +2604,61 @@ export function InternDetailScreen({ internId }: { internId?: string }) {
             ))
           )}
         </div>
+
+        <div id="task-history">
+          <h2 className="mt-12 text-2xl font-semibold">Task History</h2>
+          <p className="mt-1 text-sm text-onSurfaceVariant mb-6">Detailed view of requirements and completion status.</p>
+
+          <div className="space-y-3 pb-20">
+            {internTasks.length === 0 ? (
+              <p className="py-10 text-center text-onSurfaceVariant text-sm">No tasks assigned to this intern.</p>
+            ) : (
+              internTasks.map((task) => {
+                const isDone = completedForUser(task, intern);
+                const submissionDate = intern.completedTaskDates?.[task.id];
+
+                return (
+                  <GhostCard key={task.id} className={cn("p-4 border transition-all", isDone ? "border-primary/20 bg-primary/5" : "border-outlineVariant/10")}>
+                    <div className="flex items-center gap-4">
+                      <div className={cn(
+                        "flex h-10 w-10 items-center justify-center rounded-xl",
+                        isDone ? "bg-primary text-white" : "bg-surfaceContainerHigh text-onSurfaceVariant/40"
+                      )}>
+                        {isDone ? <CheckCircle size={20} /> : <Circle size={20} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className={cn("block font-bold truncate", isDone ? "text-onSurface" : "text-onSurface/60")}>
+                            {task.title}
+                          </span>
+                          <span className="text-[10px] font-black text-primary uppercase ml-2 shrink-0">{task.credits} PTS</span>
+                        </div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className="text-[10px] font-bold bg-surfaceContainerHighest px-2 py-0.5 rounded text-onSurfaceVariant uppercase tracking-wider">
+                            {task.phase}
+                          </span>
+                          {isDone && submissionDate && (
+                            <span className="text-[10px] text-green-600 font-bold">
+                              Done {formatShortDate(submissionDate)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </GhostCard>
+                );
+              })
+            )}
+          </div>
+        </div>
       </SafeArea>
     </Screen>
   );
 }
 
-function DetailMetric({ title, value, icon: Icon, success }: { title: string; value: string; icon: LucideIcon; success?: boolean }) {
+function DetailMetric({ title, value, icon: Icon, success, onClick }: { title: string; value: string; icon: LucideIcon; success?: boolean; onClick?: () => void }) {
   return (
-    <GhostCard className="p-5">
+    <GhostCard className="p-5" onClick={onClick}>
       <span className={cn("inline-flex rounded-full p-2", success ? "bg-secondaryContainer text-onSecondaryContainer" : "bg-primary/10 text-primary")}><Icon size={16} /></span>
       <span className="mt-4 block text-3xl font-extrabold">{value}</span>
       <span className="mt-1 block text-[10px] text-onSurfaceVariant">{title}</span>
