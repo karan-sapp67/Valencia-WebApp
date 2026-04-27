@@ -798,9 +798,23 @@ function SimpleTaskCard({ task, user }: { task: TaskModel; user: UserModel }) {
 
 export function RoleSelectorScreen() {
   const router = useRouter();
+  const { userData, loading } = useCurrentUser();
+
+  useEffect(() => {
+    if (!loading && userData) {
+      if (userData.role === "Admin") {
+        router.replace("/admin/dashboard");
+      } else {
+        router.replace("/dashboard");
+      }
+    }
+  }, [userData, loading, router]);
+
+  if (loading) return <LoadingScreen />;
+
   const roles = [
     { title: "Intern Workspace", description: "View dashboard, track task progress, and see cohort leaderboard as a user.", icon: User, path: "/sign-in" },
-    { title: "Admin Hub", description: "Manage cohort, create tasks, review submissions, and view intern metrics.", icon: ShieldCheck, path: "/admin/login" },
+    { title: "Admin Hub", description: "Manage interns, create tasks, review submissions, and view intern metrics.", icon: ShieldCheck, path: "/admin/login" },
   ];
   return (
     <Screen className="flex items-center">
@@ -870,7 +884,7 @@ export function SignInScreen() {
     }
   }
 
-  async function handleReset() {
+  async function handleResetPassword() {
     if (!email.trim()) {
       setMessage("Please enter your email address first.");
       return;
@@ -879,10 +893,10 @@ export function SignInScreen() {
     setMessage("");
     try {
       await sendReset(email.trim());
-      setMessage("Success: Reset link sent! Check your inbox and spam folder.");
-    } catch (error) {
-      console.error("Reset error:", error);
-      setMessage("Could not send reset email. Verify your address is correct.");
+      setMessage("A password reset link has been sent to your email.");
+    } catch (error: any) {
+      console.error("Reset Error:", error);
+      setMessage(error.message || "Could not send reset link.");
     } finally {
       setLoading(false);
     }
@@ -894,16 +908,20 @@ export function SignInScreen() {
         <BackHeader />
         <img src="/assets/app_logo.png" alt="Stitch" className="mt-2 h-16 w-16 rounded-xl object-contain" />
         <h1 className="mt-8 text-[44px] font-bold leading-none">Welcome Back</h1>
-        <p className="mt-3 text-base text-onSurfaceVariant">Resume your progress and distilled focus.</p>
+        <p className="mt-3 text-base text-onSurfaceVariant">
+          Resume your progress and distilled focus.
+        </p>
+
         <div className="mt-12 space-y-6">
           <TextField label="WORK EMAIL" hint="alex.chen@distilled.com" icon={Mail} value={email} onChange={setEmail} />
           <TextField label="PASSWORD" hint="Enter your password" icon={Lock} type="password" value={password} onChange={setPassword} />
         </div>
         <div className="mt-4 flex justify-end">
-          <button type="button" onClick={handleReset} className="font-semibold text-primary">Forgot password?</button>
+          <button type="button" onClick={handleResetPassword} className="font-semibold text-primary">Forgot password?</button>
         </div>
         <FormError message={message} />
         <AppButton className="mt-10" disabled={loading} onClick={handleSignIn}>{loading ? "Signing In..." : "Sign In"}</AppButton>
+
         <button
           type="button"
           disabled={loading}
@@ -1755,44 +1773,42 @@ function ConfirmationModal({
   if (!isOpen || !mounted) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] flex items-end justify-center sm:items-center bg-black/70 backdrop-blur-md p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#0D0E11]/80 backdrop-blur-sm p-6" onClick={onClose}>
       <motion.div
-        initial={{ y: "100%", opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: "100%", opacity: 0 }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-[40px] bg-surfaceContainerLow p-8 shadow-2xl border border-white/5 mb-safe sm:mb-0"
+        className="w-full max-w-[320px] rounded-[32px] bg-[#1A1C1E] p-6 shadow-2xl border border-white/5"
       >
-        <div className="mx-auto mb-6 h-1.5 w-12 rounded-full bg-outlineVariant/30 sm:hidden" />
         {Icon && (
           <div className={cn(
-            "flex h-20 w-20 items-center justify-center rounded-[28px] mb-8 mx-auto",
+            "flex h-16 w-16 items-center justify-center rounded-2xl mb-4 mx-auto",
             isDestructive ? "bg-red-500/10 text-red-500" : "bg-primary/10 text-primary"
           )}>
-            <Icon size={40} />
+            <Icon size={32} />
           </div>
         )}
-        <h3 className="text-3xl font-black text-center">{title}</h3>
-        <p className="mt-4 text-onSurfaceVariant font-medium text-center text-lg leading-relaxed">{message}</p>
-        <div className="mt-10 flex flex-col-reverse sm:flex-row gap-4">
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-[24px] bg-surfaceContainerHigh py-5 font-black text-lg transition active:scale-95"
-          >
-            {cancelLabel}
-          </button>
+        <h3 className="text-xl font-bold text-center text-white">{title}</h3>
+        <p className="mt-2 text-onSurfaceVariant text-center text-sm leading-relaxed">{message}</p>
+        <div className="mt-6 flex flex-col gap-2">
           <button
             onClick={() => {
               onConfirm();
               onClose();
             }}
             className={cn(
-              "flex-1 rounded-[24px] py-5 font-black text-lg text-white transition active:scale-95 shadow-xl",
-              isDestructive ? "bg-red-500 shadow-red-500/30" : "bg-primary shadow-primary/30"
+              "w-full rounded-2xl py-3.5 font-bold text-sm text-white transition active:scale-95",
+              isDestructive ? "bg-red-500" : "bg-primary"
             )}
           >
             {confirmLabel}
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full rounded-2xl bg-white/5 py-3.5 font-bold text-sm text-onSurfaceVariant transition active:scale-95"
+          >
+            {cancelLabel}
           </button>
         </div>
       </motion.div>
@@ -1904,7 +1920,7 @@ export function ProfileScreen({ admin = false }: { admin?: boolean }) {
             <Divider className="opacity-50" />
             {admin ? (
               <>
-                <SettingsRow icon={Users} title="Manage Cohort" onClick={() => router.push("/admin/interns")} />
+                <SettingsRow icon={Users} title="Manage Interns" onClick={() => router.push("/admin/interns")} />
                 <Divider className="opacity-50" />
                 <SettingsRow
                   icon={Download}
@@ -2002,46 +2018,40 @@ function SecurityModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: ()
   if (!isOpen || !mounted) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] flex items-end justify-center sm:items-center bg-black/70 backdrop-blur-md p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#0D0E11]/80 backdrop-blur-sm p-6" onClick={onClose}>
       <motion.div
-        initial={{ y: "100%", opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: "100%", opacity: 0 }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-[40px] bg-surfaceContainerLow p-8 shadow-2xl border border-white/5 mb-safe sm:mb-0 max-h-[90vh] flex flex-col"
+        className="w-full max-w-[340px] rounded-[32px] bg-[#1A1C1E] p-6 shadow-2xl border border-white/5 max-h-[85vh] flex flex-col"
       >
-        <div className="mx-auto mb-6 h-1.5 w-12 rounded-full bg-outlineVariant/30 sm:hidden shrink-0" />
-
-        <div className="flex items-center justify-between shrink-0 mb-8">
-          <div>
-            <h3 className="text-3xl font-black text-onSurface">Security</h3>
-            <p className="mt-1 text-onSurfaceVariant font-medium text-base">Edit profile and login info.</p>
-          </div>
-          <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center">
-            <Lock size={24} className="text-primary" />
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold text-white">Security</h3>
+          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Lock size={20} className="text-primary" />
           </div>
         </div>
 
-        <div className="space-y-8 overflow-y-auto pr-2 custom-scrollbar flex-1 pb-4">
-          <div className="space-y-4">
-            <label className="text-[11px] font-black tracking-widest text-onSurfaceVariant uppercase ml-1">Username</label>
+        <div className="space-y-6 overflow-y-auto pr-1 custom-scrollbar flex-1">
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold tracking-widest text-onSurfaceVariant uppercase ml-1">Username</label>
             <div className="relative group">
-              <div className="absolute left-5 top-1/2 -translate-y-1/2 text-primary">
-                <User size={20} />
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/60">
+                <User size={18} />
               </div>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Full name"
-                className="w-full bg-surfaceContainerLowest border border-outlineVariant/20 rounded-[20px] py-4 pl-14 pr-4 font-bold text-lg text-onSurface outline-none focus:border-primary/50 transition-all"
+                className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 font-bold text-base text-white outline-none focus:border-primary/50 transition-all"
               />
             </div>
           </div>
 
-          <div className="space-y-4">
-            <label className="text-[11px] font-black tracking-widest text-onSurfaceVariant uppercase ml-1">Avatar</label>
-            <div className="grid grid-cols-4 gap-3">
+          <div className="space-y-3">
+            <label className="text-[10px] font-bold tracking-widest text-onSurfaceVariant uppercase ml-1">Avatar</label>
+            <div className="grid grid-cols-4 gap-2">
               {avatarPresets.map((preset) => (
                 <button
                   key={preset.id}
@@ -2049,14 +2059,14 @@ function SecurityModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: ()
                   className={cn(
                     "relative aspect-square rounded-xl flex items-center justify-center transition-all",
                     avatar === preset.id
-                      ? "bg-primary/20 ring-2 ring-primary"
-                      : "bg-surfaceContainerLowest border border-outlineVariant/20"
+                      ? "bg-primary/20 ring-1 ring-primary"
+                      : "bg-white/5 border border-white/10"
                   )}
                 >
-                  <ProfileAvatar name={preset.label} avatarId={preset.id} size={40} />
+                  <ProfileAvatar name={preset.label} avatarId={preset.id} size={32} />
                   {avatar === preset.id && (
                     <div className="absolute -top-1 -right-1 bg-primary rounded-full p-0.5 text-white shadow-lg">
-                      <Check size={10} strokeWidth={4} />
+                      <Check size={8} strokeWidth={4} />
                     </div>
                   )}
                 </button>
@@ -2064,43 +2074,50 @@ function SecurityModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: ()
             </div>
           </div>
 
-          <div className="pt-6 border-t border-outlineVariant/10">
+          <div className="pt-4 border-t border-white/5">
             <button
               onClick={handleResetPassword}
               disabled={loading}
-              className="group w-full bg-surfaceContainerLowest rounded-[24px] p-5 border border-outlineVariant/20 flex items-center justify-between transition-all active:scale-[0.98]"
+              className="group w-full bg-white/5 rounded-2xl p-4 border border-white/5 flex items-center justify-between transition-all active:scale-[0.98]"
             >
-              <div className="flex items-center gap-4">
-                <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center">
-                  <Key size={20} className="text-red-500" />
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+                  <Key size={16} className="text-red-500" />
                 </div>
                 <div className="text-left">
-                  <span className="block font-bold text-onSurface">Reset Password</span>
-                  <span className="block text-onSurfaceVariant text-xs">Send link to email</span>
+                  <span className="block font-bold text-sm text-white">Reset Password</span>
                 </div>
               </div>
-              <ChevronRight size={18} className="text-onSurfaceVariant" />
+              <ChevronRight size={16} className="text-onSurfaceVariant" />
             </button>
           </div>
         </div>
 
-        <FormError message={message} />
-
-        <div className="mt-6 flex flex-col-reverse sm:flex-row gap-3 shrink-0">
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-[24px] bg-surfaceContainerHigh py-4 font-black text-lg text-onSurface transition active:scale-95"
-          >
-            Cancel
-          </button>
+        <div className="mt-6 flex flex-col gap-2 shrink-0">
           <button
             onClick={handleSave}
             disabled={loading}
-            className="flex-1 rounded-[24px] bg-primary py-4 font-black text-lg text-white transition active:scale-95 shadow-lg shadow-primary/20"
+            className="w-full rounded-2xl bg-primary py-3.5 font-bold text-sm text-white transition active:scale-95 flex items-center justify-center gap-2"
           >
-            {loading ? "Saving..." : "Save Changes"}
+            {loading ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
+            {loading ? "Updating..." : "Save Changes"}
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full rounded-2xl bg-white/5 py-3 font-bold text-sm text-onSurfaceVariant transition active:scale-95"
+          >
+            Cancel
           </button>
         </div>
+
+        {message && (
+          <div className={cn(
+            "mt-4 p-3 rounded-xl text-center font-bold text-xs",
+            message.startsWith("Success") ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"
+          )}>
+            {message}
+          </div>
+        )}
       </motion.div>
     </div>,
     document.body
@@ -2284,6 +2301,24 @@ export function AdminLoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+
+  async function handleResetPassword() {
+    if (!email.trim()) {
+      setMessage("Please enter your admin email first.");
+      return;
+    }
+    setLoading(true);
+    setMessage("");
+    try {
+      await sendReset(email.trim());
+      setMessage("A password reset link has been sent to your email.");
+    } catch (error: any) {
+      setMessage(error.message || "Could not send reset link.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleLogin() {
     setLoading(true);
     setMessage("");
@@ -2301,10 +2336,23 @@ export function AdminLoginScreen() {
       <SafeArea className="pt-0">
         <BackHeader />
         <h1 className="mt-4 text-[44px] font-bold leading-tight">Supervisor Access</h1>
-        <p className="mt-3 text-base text-onSurfaceVariant">Enter your credentials to manage the cohort.</p>
+        <p className="mt-3 text-base text-onSurfaceVariant">
+          Enter your credentials to manage the cohort.
+        </p>
+
         <div className="mt-12 space-y-6">
           <TextField label="ADMIN EMAIL" hint="admin@distilled.com" icon={Mail} value={email} onChange={setEmail} />
           <TextField label="PASSWORD" hint="Enter admin password" icon={Lock} type="password" value={password} onChange={setPassword} />
+          <div className="flex justify-end px-2">
+            <button
+              type="button"
+              onClick={handleResetPassword}
+              disabled={loading}
+              className="text-sm font-bold text-primary active:opacity-60"
+            >
+              Forgot Password?
+            </button>
+          </div>
         </div>
         <FormError message={message} />
         <AppButton className="mt-12" disabled={loading} onClick={handleLogin}>{loading ? "Authenticating..." : "Login to Management"}</AppButton>
@@ -2335,9 +2383,12 @@ export function AdminDashboardScreen() {
   const router = useRouter();
   const auth = useProtectedAdmin();
   const users = useUsers();
+  const notifications = useNotifications(auth.userData?.email);
   if (auth.loading || !auth.userData || auth.userData.role !== "Admin") return <LoadingScreen />;
   const interns = users.data.filter((user) => user.role !== "Admin");
   const pending = interns.flatMap((intern) => intern.transactions.filter((tx) => tx.status === "pending").map((tx) => ({ intern, tx }))).sort((a, b) => parseDate(b.tx.date).getTime() - parseDate(a.tx.date).getTime());
+  const unreadCount = notifications.data.filter(n => !n.isRead).length;
+
   return (
     <Screen>
       <SafeArea bottomNav>
@@ -2346,7 +2397,16 @@ export function AdminDashboardScreen() {
             <p className="text-xs font-semibold tracking-[0.12em] text-primary">Management Hub</p>
             <h1 className="mt-1 text-2xl font-semibold">Cohort Overview</h1>
           </div>
-          <button type="button" className="apk-ghost rounded-full p-3"><Bell size={20} /></button>
+          <button
+            type="button"
+            onClick={() => router.push("/notifications")}
+            className="apk-ghost relative rounded-full p-3"
+          >
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-surfaceContainerLow" />
+            )}
+          </button>
         </header>
         <div className="mt-8 grid grid-cols-2 gap-4">
           <AdminMetric title="Pending Reviews" value={`${pending.length}`} accent onClick={() => router.push("/admin/submissions")} />
@@ -2478,8 +2538,7 @@ export function InternDetailScreen({ internId }: { internId?: string }) {
           <ProfileAvatar name={intern.fullName} avatarId={intern.profilePictureUrl} size={96} borderWidth={2} borderColor="rgba(0,93,167,0.1)" />
           <div className="mt-4 inline-flex rounded-full bg-tertiaryContainer px-3 py-1 text-[10px] font-bold text-onTertiaryContainer">ON TRACK</div>
           <h1 className="mt-3 text-3xl font-bold">{intern.fullName}</h1>
-          <p className="mt-1 text-sm text-onSurfaceVariant">{intern.role} - Cohort 2024</p>
-          <button type="button" className="mt-4 rounded-full bg-surfaceContainerHigh px-4 py-2 text-sm text-onSurfaceVariant"><Plus size={16} className="mr-1 inline" /> Add Note</button>
+          <p className="mt-1 text-sm text-onSurfaceVariant">{intern.role}</p>
         </div>
         <div className="mt-12 grid grid-cols-2 gap-4">
           <DetailMetric title="Total Credits Earned" value={intern.credits.toLocaleString()} icon={Award} />
@@ -2772,6 +2831,9 @@ function TaskForm({ initial, users, onDone }: { initial: TaskModel | null; users
     setError(null);
 
     try {
+      const baseCredits = Math.max(0, Number(credits));
+      const bonusCreds = bonus ? Math.max(0, Number(bonusCredits || 0)) : 0;
+
       const task: TaskModel = {
         id: initial?.id ?? crypto.randomUUID(),
         title,
@@ -2779,10 +2841,10 @@ function TaskForm({ initial, users, onDone }: { initial: TaskModel | null; users
         phase: initial?.phase || "ADMIN ASSIGNED",
         taskType,
         dueDate: new Date(deadline).toISOString(),
-        credits: Number(credits),
+        credits: baseCredits,
         bonusAvailable: bonus,
         bonusDescription: bonus ? bonusDescription : "",
-        bonusCredits: bonus ? Number(bonusCredits || 0) : 0,
+        bonusCredits: bonusCreds,
         isCompleted: initial?.isCompleted ?? false,
         isBonusCompleted: initial?.isBonusCompleted ?? false,
         assignedUserEmails: assigned,
@@ -2828,7 +2890,7 @@ function TaskForm({ initial, users, onDone }: { initial: TaskModel | null; users
               <input type="datetime-local" className="h-14 rounded-xl border border-outlineVariant/15 bg-surfaceContainerLowest px-3 outline-none" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
             </div>
           </div>
-          <TextField label="BASE CREDITS" hint="e.g., 150" icon={Award} type="number" value={credits} onChange={setCredits} />
+          <TextField label="BASE CREDITS" hint="e.g., 150" icon={Award} type="number" value={credits} onChange={(val) => setCredits(val.replace(/\D/g, ""))} />
           <div className="rounded-2xl border border-outlineVariant/15 bg-surfaceContainerLowest p-4">
             <div className="flex items-center gap-3">
               <Users className="text-onSurfaceVariant" />
@@ -2858,7 +2920,7 @@ function TaskForm({ initial, users, onDone }: { initial: TaskModel | null; users
                 <span className="flex items-center gap-3 font-semibold text-sm"><Sparkles size={18} className={bonus ? "text-orange-500" : "text-onSurfaceVariant"} /> Include Side / Bonus Task</span>
                 <Switch checked={bonus} onChange={() => setBonus(!bonus)} />
               </div>
-              {bonus ? <div className="mt-4 space-y-4 border-t border-amber-500/10 pt-4"><TextField label="SIDE TASK DESCRIPTION" hint="e.g., Include a competitor sentiment analysis" value={bonusDescription} onChange={setBonusDescription} /><TextField label="BONUS CREDITS" hint="e.g., 50" icon={Award} type="number" value={bonusCredits} onChange={setBonusCredits} /></div> : null}
+              {bonus ? <div className="mt-4 space-y-4 border-t border-amber-500/10 pt-4"><TextField label="SIDE TASK DESCRIPTION" hint="e.g., Include a competitor sentiment analysis" value={bonusDescription} onChange={setBonusDescription} /><TextField label="BONUS CREDITS" hint="e.g., 50" icon={Award} type="number" value={bonusCredits} onChange={(val) => setBonusCredits(val.replace(/\D/g, ""))} /></div> : null}
             </div>
           ) : null}
           <AppButton disabled={loading} onClick={save}>{loading ? "Saving..." : (initial ? "Update Task" : "Create Task")}</AppButton>

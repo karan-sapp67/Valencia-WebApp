@@ -335,8 +335,6 @@ export async function loginWithGoogle() {
     }
   }
 }
-  }
-}
 
 export async function logoutUser() {
   await signOut(auth);
