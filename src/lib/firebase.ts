@@ -5,12 +5,12 @@ import { getStorage } from "firebase/storage";
 import { getMessaging, isSupported } from "firebase/messaging";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB6fC8X9H9d58bgMMtHM4-tcslNXeeuLmI",
-  authDomain: "intern-app-valencia.firebaseapp.com",
-  projectId: "intern-app-valencia",
-  storageBucket: "intern-app-valencia.firebasestorage.app",
-  messagingSenderId: "1015101841791",
-  appId: "1:1015101841791:web:0fe364edc53248f310fa4a"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
