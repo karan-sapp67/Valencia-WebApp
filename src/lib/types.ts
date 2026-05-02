@@ -2,10 +2,22 @@ export interface VaultTransaction {
   id: string;
   title: string;
   amount: number;
+  requestedAmount?: number;
+  awardedAmount?: number;
   date: string;
   status: 'pending' | 'approved' | 'rejected';
   adminRemarks?: string;
   adminName?: string;
+  description?: string;
+  timestamp?: string;
+  type?: string;
+  category?: string;
+  userId?: string;
+  userName?: string;
+  taskId?: string;
+  isBonus?: boolean;
+  proofUrls?: string[];
+  proofNames?: string[];
 }
 
 export interface UserModel {
@@ -16,7 +28,10 @@ export interface UserModel {
   credits: number;
   profilePictureUrl?: string;
   transactions: VaultTransaction[];
+  submittedTaskDates: Record<string, string>;
+  submittedBonusTaskDates: Record<string, string>;
   completedTaskDates: Record<string, string>;
+  completedBonusTaskDates: Record<string, string>;
   notificationsEnabled: boolean;
 }
 
@@ -35,7 +50,10 @@ export interface TaskModel {
   isBonusCompleted: boolean;
   submissionDate?: string;
   assignedUserEmails: string[];
+  submittedByUserEmails: string[];
+  submittedBonusByUserEmails: string[];
   completedByUserEmails: string[];
+  completedBonusByUserEmails: string[];
   order?: number;
   isOptional?: boolean;
 }

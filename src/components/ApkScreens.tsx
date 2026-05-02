@@ -26,6 +26,7 @@ import {
   Edit3,
   Eye,
   EyeOff,
+  FileText,
   Flame,
   Gem,
   Landmark,
@@ -39,6 +40,7 @@ import {
   Moon,
   MoreVertical,
   PartyPopper,
+  Play,
   Plus,
   PlusCircle,
   RefreshCw,
@@ -53,6 +55,7 @@ import {
   Trophy,
   User,
   Users,
+  X,
   XCircle,
   Zap,
 } from "lucide-react";
@@ -61,16 +64,23 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   addTask,
   approveTransaction,
+  activeForUser,
+  bonusTaskCompletedForUser,
+  completedForUser,
   deleteTask,
   formatDue,
   formatRelative,
   formatShortDate,
+  isBonusSubmittedForUser,
+  isSubmittedForUser,
   loginUser,
   loginWithGoogle,
   logoutUser,
+  mainTaskCompletedForUser,
   markAllNotificationsRead,
   markNotificationRead,
   markTaskCompleted,
+  withdrawSubmission,
   parseDate,
   registerUser,
   rejectTransaction,
@@ -79,6 +89,8 @@ import {
   updateAvatar,
   updateFullName,
   updateTask,
+  uploadProfilePicture,
+  uploadProof,
   useCurrentUser,
   useNotifications,
   useTasks,
@@ -378,14 +390,14 @@ function GhostCard({ children, className, onClick }: { children: React.ReactNode
   );
 }
 
-function BackHeader({ title, center = false }: { title?: string; center?: boolean }) {
+function BackHeader({ title, center = false, onClick }: { title?: string; center?: boolean; onClick?: () => void }) {
   const router = useRouter();
   return (
     <div className={cn("h-14 flex items-center", center ? "justify-center relative" : "gap-2")}>
       <button
         type="button"
         aria-label="Back"
-        onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))}
+        onClick={onClick || (() => (window.history.length > 1 ? router.back() : router.push("/")))}
         className={cn("w-11 h-11 rounded-full flex items-center justify-center text-onSurface active:bg-surfaceContainerHigh transition-colors", center && "absolute left-0")}
       >
         <ArrowLeft size={24} strokeWidth={2.5} />
@@ -619,20 +631,7 @@ function AvatarTile({ preset, selected, onClick }: { preset: AvatarPreset; selec
   );
 }
 
-function activeForUser(task: TaskModel, user?: UserModel | null) {
-  const email = user?.email;
-  const assigned = task.assignedUserEmails.length === 0 || (email ? task.assignedUserEmails.includes(email) : false);
-  const done = email ? task.completedByUserEmails.includes(email) || Boolean(user?.completedTaskDates?.[task.id]) : false;
-  return assigned && !done;
-}
-
-function completedForUser(task: TaskModel, user?: UserModel | null) {
-  const email = user?.email;
-  const assigned = task.assignedUserEmails.length === 0 || (email ? task.assignedUserEmails.includes(email) : false);
-  const done = email ? task.completedByUserEmails.includes(email) || Boolean(user?.completedTaskDates?.[task.id]) : false;
-  return assigned && done;
-}
-
+/* ===================== HELPERS ===================== */
 function groupByPhase(tasks: TaskModel[]) {
   return tasks.reduce<Record<string, TaskModel[]>>((groups, task) => {
     groups[task.phase] = groups[task.phase] ?? [];
@@ -643,8 +642,62 @@ function groupByPhase(tasks: TaskModel[]) {
 
 function LoadingScreen() {
   return (
-    <Screen className="flex items-center justify-center">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    <Screen className="relative flex items-center justify-center overflow-hidden">
+      <motion.div
+        className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-tertiaryContainer to-orange-400"
+        initial={{ scaleX: 0, transformOrigin: "left" }}
+        animate={{ scaleX: [0.15, 0.72, 0.35, 1] }}
+        transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}
+      />
+      <div className="w-full max-w-[360px] px-8 text-center">
+        <motion.div
+          className="relative mx-auto flex h-28 w-28 items-center justify-center"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.35, ease: [0.2, 0, 0, 1] }}
+        >
+          <motion.div
+            className="absolute inset-0 rounded-[32px] border border-primary/20 bg-primary/10"
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 8, ease: "linear" }}
+          />
+          <motion.div
+            className="absolute inset-3 rounded-[26px] border border-tertiaryContainer/30 bg-tertiaryContainer/10"
+            animate={{ rotate: -360 }}
+            transition={{ repeat: Infinity, duration: 7, ease: "linear" }}
+          />
+          <motion.div
+            className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-surfaceContainerLowest shadow-[0_18px_40px_rgba(0,0,0,0.28)] ring-1 ring-outlineVariant/15"
+            animate={{ y: [0, -5, 0] }}
+            transition={{ repeat: Infinity, duration: 1.8, ease: "easeInOut" }}
+          >
+            <ClipboardCheck size={30} className="text-primary" />
+          </motion.div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.1 }}
+        >
+          <p className="mt-8 text-[10px] font-black uppercase tracking-[0.2em] text-primary">Valencia Nutrition Intern App</p>
+          <h2 className="mt-3 text-2xl font-black leading-tight">Loading workspace</h2>
+          <p className="mt-2 text-sm font-medium text-onSurfaceVariant">Syncing your tasks, credits, and reviews.</p>
+        </motion.div>
+
+        <div className="mx-auto mt-8 max-w-[280px] space-y-3">
+          {[0, 1, 2].map((item) => (
+            <motion.div
+              key={item}
+              className="h-3 rounded-full bg-surfaceContainerHigh"
+              initial={{ opacity: 0.4, scaleX: 0.72 }}
+              animate={{ opacity: [0.35, 0.9, 0.35], scaleX: [0.72, 1, 0.72] }}
+              transition={{ repeat: Infinity, duration: 1.4, delay: item * 0.16, ease: "easeInOut" }}
+              style={{ transformOrigin: "center" }}
+            />
+          ))}
+        </div>
+      </div>
     </Screen>
   );
 }
@@ -717,90 +770,934 @@ function SmallStat({ title, value, subtitle, icon: Icon, color, onClick }: { tit
 
 function DashboardTaskCard({ task, user }: { task: TaskModel; user: UserModel }) {
   const router = useRouter();
+  const [showDetails, setShowDetails] = useState(false);
+
+  // Use the global functions which now have fuzzy matching for transactions
+  const isApproved = mainTaskCompletedForUser(task, user);
+  const isSubmitted = isSubmittedForUser(task, user);
+
+  // If approved, it's NEVER "under review"
+  const showSubmitted = isSubmitted && !isApproved;
+
   return (
-    <GhostCard className="overflow-hidden border-primary/10 border-2">
-      <div className="flex items-center justify-between bg-primary/5 px-5 py-3">
-        <div className="flex items-center gap-2 text-primary">
-          <Component size={14} />
-          <span className="text-[10px] font-black tracking-[0.12em] uppercase">{task.phase}</span>
-        </div>
-        <span className={cn("rounded-lg px-2.5 py-1 text-[10px] font-bold", formatDue(task.dueDate) === "Overdue" ? "bg-red-500/10 text-red-500" : "bg-tertiaryContainer text-onTertiaryContainer")}>{formatDue(task.dueDate)}</span>
-      </div>
-      <div className="p-5">
-        <h3 className="text-lg font-bold">{task.title}</h3>
-        <p className="mt-2 text-xs leading-relaxed text-onSurfaceVariant">Complete this task to earn credits and climb the leaderboard.</p>
-        <div className="mt-5 flex items-center justify-between gap-4">
+    <>
+      <GhostCard className="overflow-hidden border-primary/10 border-2">
+        <div className="flex items-center justify-between bg-primary/5 px-5 py-3">
           <div className="flex items-center gap-2 text-primary">
-            <span className="rounded-full bg-primary/10 p-2">
-              <Award size={16} />
-            </span>
-            <span className="font-extrabold">{task.credits} Credits</span>
+            <Component size={14} />
+            <span className="text-[10px] font-black tracking-[0.12em] uppercase">{task.phase}</span>
           </div>
-          <button
-            type="button"
-            onClick={() => router.push(`/task-completed?taskId=${encodeURIComponent(task.id)}`)}
-            className="rounded-xl bg-primary px-6 py-3 text-sm font-bold text-white"
-          >
-            Complete Task
-          </button>
+          {isApproved ? (
+            <span className="rounded-lg bg-green-500/10 px-2.5 py-1 text-[10px] font-bold text-green-500">Approved</span>
+          ) : showSubmitted ? (
+            <span className="rounded-lg bg-orange-500/10 px-2.5 py-1 text-[10px] font-bold text-orange-500 flex items-center gap-1">
+              <Clock size={10} /> Pending Review
+            </span>
+          ) : (
+            <span className={cn("rounded-lg px-2.5 py-1 text-[10px] font-bold", formatDue(task.dueDate) === "Overdue" ? "bg-red-500/10 text-red-500" : "bg-tertiaryContainer text-onTertiaryContainer")}>{formatDue(task.dueDate)}</span>
+          )}
         </div>
-      </div>
-    </GhostCard>
+        <div className="p-5">
+          <h3 className="text-lg font-bold">{task.title}</h3>
+          <p className="mt-2 text-xs leading-relaxed text-onSurfaceVariant line-clamp-2">{task.description || "Complete this task to earn credits and climb the leaderboard."}</p>
+          <div className="mt-5 flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 text-primary">
+                <span className="rounded-full bg-primary/10 p-2">
+                  <Award size={16} />
+                </span>
+                <span className="font-extrabold">{task.credits} Credits</span>
+              </div>
+              {showSubmitted && (
+                <div className="flex items-center gap-1.5 ml-1 text-[10px] font-bold text-onSurfaceVariant/60 uppercase">
+                   <Clock size={10} /> {formatDue(task.dueDate)} remaining
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowDetails(true)}
+              className="rounded-xl bg-primary px-6 py-3 text-sm font-bold text-white shadow-lg active:scale-95 transition-transform"
+            >
+              View Details
+            </button>
+          </div>
+        </div>
+      </GhostCard>
+
+      <TaskDetailsModal
+        isOpen={showDetails}
+        onClose={() => setShowDetails(false)}
+        task={task}
+        user={user}
+      />
+    </>
   );
 }
 
 function SimpleTaskCard({ task, user }: { task: TaskModel; user: UserModel }) {
-  const router = useRouter();
-  const done = completedForUser(task, user);
+  const [showDetails, setShowDetails] = useState(false);
+
+  // Use global functions with fuzzy matching
+  const isApproved = mainTaskCompletedForUser(task, user);
+  const isSubmitted = isSubmittedForUser(task, user);
+
+  // Explicit priority
+  const showSubmitted = isSubmitted && !isApproved;
+
+  const tx = useMemo(() => {
+    if (!user?.transactions) return null;
+    const taskIdLower = task.id.toLowerCase();
+    const taskTitleLower = (task.title || "").toLowerCase();
+
+    return [...user.transactions].reverse().find(t => {
+      if (t.isBonus) return false;
+      const txTaskId = (t.taskId || "").toLowerCase();
+      const txTitle = (t.title || t.description || "").toLowerCase();
+      if (txTaskId === taskIdLower) return true;
+      if (txTitle === taskTitleLower) return true;
+      if (taskTitleLower.length > 3 && txTitle.includes(taskTitleLower)) return true;
+      return false;
+    });
+  }, [user.transactions, task.id, task.title]);
+
+  const isRejected = tx?.status === 'rejected';
+
   return (
-    <GhostCard className="p-5">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium tracking-[0.12em] text-onSurfaceVariant">{task.phase}</span>
-        <span className="flex items-center gap-1 rounded-full bg-surfaceContainerLow px-3 py-1 text-xs font-semibold text-primary">
-          <Award size={14} />
-          {task.credits}
-        </span>
-      </div>
-      <h3 className="mt-3 text-lg font-semibold">{task.title}</h3>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <span className={cn("rounded px-2 py-1 text-xs font-semibold", task.taskType === "Main Task" ? "bg-primary/10 text-primary" : "bg-surfaceContainerHigh text-onSurfaceVariant")}>{task.taskType}</span>
-      </div>
-      <div className="mt-4 flex items-center gap-2 text-sm text-onSurfaceVariant">
-        <Calendar size={16} />
-        <span>{formatDue(task.dueDate)}</span>
-      </div>
-      <button
-        type="button"
-        disabled={done}
-        onClick={() => router.push(`/task-completed?taskId=${encodeURIComponent(task.id)}`)}
-        className="mt-6 h-12 w-full rounded-xl bg-secondaryContainer font-bold text-onSecondaryContainer disabled:opacity-50"
-      >
-        {done ? "Completed" : "Mark Ready"}
-      </button>
-      {task.bonusAvailable && !done ? (
-        <div className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-orange-500">
-              <Sparkles size={16} />
-              <span className="text-sm font-semibold">Optional Side Task</span>
-            </div>
+    <>
+      <GhostCard className="p-5" onClick={() => setShowDetails(true)}>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-black tracking-[0.12em] text-onSurfaceVariant/60 uppercase">{task.phase}</span>
+          <span className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs font-black text-primary">
+            <Award size={14} />
+            {task.credits}
+          </span>
+        </div>
+        <h3 className="mt-3 text-lg font-bold text-onSurface">{task.title}</h3>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <span className={cn("rounded px-2 py-0.5 text-[10px] font-black uppercase tracking-wider", task.taskType === "Main Task" ? "bg-primary/10 text-primary" : "bg-surfaceContainerHigh text-onSurfaceVariant")}>{task.taskType}</span>
+          {isApproved ? (
+            <span className="rounded px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-green-500/10 text-green-500">Approved</span>
+          ) : showSubmitted ? (
+            <span className="rounded px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-orange-500/10 text-orange-500">Under Review</span>
+          ) : isRejected ? (
+            <span className="rounded px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-red-500/10 text-red-500">Rejected / Action Required</span>
+          ) : null}
+          {tx && tx.proofUrls && tx.proofUrls.length > 0 && (
+            <span className="flex items-center gap-1 rounded bg-surfaceContainerLow px-2 py-0.5 text-[10px] font-black text-primary uppercase tracking-wider">
+              <FileText size={10} />
+              {tx.proofUrls.length} {tx.proofUrls.length === 1 ? 'File' : 'Files'}
+            </span>
+          )}
+        </div>
+
+        <div className="mt-4 flex items-center justify-between">
+          <div className="flex flex-col gap-1">
+            {isApproved ? (
+              <div className="flex items-center gap-2">
+                <CheckCircle size={16} className="text-green-500" />
+                <span className="text-sm font-bold text-green-500">Completed</span>
+              </div>
+            ) : showSubmitted ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <Clock size={16} className="text-orange-500" />
+                  <span className="text-sm font-bold text-orange-500">Awaiting Approval</span>
+                </div>
+                <div className="flex items-center gap-1.5 ml-6">
+                  <Calendar size={12} className="text-onSurfaceVariant/40" />
+                  <span className="text-[10px] font-bold text-onSurfaceVariant/60 uppercase">
+                    Due: {formatDue(task.dueDate)}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Clock size={16} className={cn(formatDue(task.dueDate) === "Overdue" ? "text-red-500" : "text-primary")} />
+                <span className={cn("text-sm font-bold", formatDue(task.dueDate) === "Overdue" ? "text-red-500" : "text-primary")}>
+                  {formatDue(task.dueDate)}
+                </span>
+              </div>
+            )}
+          </div>
+          <ChevronRight size={16} className="text-onSurfaceVariant/30" />
+        </div>
+
+        <div className="mt-6 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDetails(true);
+            }}
+            className={cn(
+              "h-12 w-full rounded-xl font-bold transition-all",
+              isApproved ? "bg-green-500/10 text-green-500 border border-green-500/20" :
+              isRejected ? "bg-red-500 text-white shadow-lg shadow-red-500/20" :
+              showSubmitted ? "bg-orange-500/10 text-orange-500 border border-orange-500/20" :
+              "bg-secondaryContainer text-onSecondaryContainer active:scale-[0.98]"
+            )}
+          >
+            {isApproved ? "View Completed Task" : isRejected ? "Fix & Re-submit" : showSubmitted ? "View Submission" : "View Task Details"}
+          </button>
+
+          {tx && tx.proofUrls && tx.proofUrls.length > 0 && (
             <button
               type="button"
-              className="rounded bg-surfaceContainerHigh px-3 py-1.5 text-[10px] font-bold"
-              onClick={() => router.push(`/task-completed?taskId=${encodeURIComponent(task.id)}&bonus=1`)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDetails(true);
+              }}
+              className="flex items-center justify-center gap-2 h-10 w-full rounded-xl border border-outlineVariant/20 bg-surfaceContainerLow text-[11px] font-black uppercase tracking-widest text-primary hover:bg-surfaceContainerHigh transition-colors"
             >
-              Mark Ready
+              <Eye size={14} />
+              View My Evidence ({tx.proofUrls.length})
             </button>
-          </div>
-          <p className="mt-2 text-sm">{task.bonusDescription}</p>
-          <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-primary">
-            <Award size={14} /> +{task.bonusCredits} Credits
-          </div>
+          )}
         </div>
-      ) : null}
-    </GhostCard>
+      </GhostCard>
+
+      <TaskDetailsModal
+        isOpen={showDetails}
+        onClose={() => setShowDetails(false)}
+        task={task}
+        user={user}
+      />
+    </>
   );
 }
+
+type EvidenceKind = "image" | "video" | "csv" | "pdf" | "file";
+
+function fileNameFromUrl(url?: string) {
+  if (!url) return "File";
+  try {
+    const pathname = new URL(url).pathname;
+    const decoded = decodeURIComponent(pathname);
+    const filePart = decoded.split("/").filter(Boolean).pop() ?? "File";
+    return filePart.replace(/^\d+_/, "") || "File";
+  } catch {
+    const cleaned = url.split("?")[0] ?? "";
+    return decodeURIComponent(cleaned.split("/").pop() ?? "File").replace(/^\d+_/, "") || "File";
+  }
+}
+
+function getEvidenceFileName(file?: File, name?: string, url?: string) {
+  return name?.trim() || file?.name || fileNameFromUrl(url);
+}
+
+function inferEvidenceKind(file: File | undefined, displayName: string, url?: string): EvidenceKind {
+  const source = `${file?.type ?? ""} ${displayName} ${url ?? ""}`.toLowerCase();
+  if (file?.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|avif|heic|heif)$/i.test(displayName)) return "image";
+  if (file?.type.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(displayName)) return "video";
+  if (source.includes("text/csv") || /\.csv$/i.test(displayName)) return "csv";
+  if (source.includes("application/pdf") || /\.pdf$/i.test(displayName)) return "pdf";
+  return "file";
+}
+
+function FilePreviewItem({
+  file,
+  url,
+  name,
+  onRemove,
+  isBonus = false
+}: {
+  file?: File;
+  url?: string;
+  name?: string;
+  onRemove?: () => void;
+  isBonus?: boolean;
+}) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const displayName = getEvidenceFileName(file, name, url);
+  const kind = inferEvidenceKind(file, displayName, url);
+  const isImage = kind === "image";
+  const isVideo = kind === "video";
+  const isCSV = kind === "csv";
+  const isPdf = kind === "pdf";
+
+  useEffect(() => {
+    if (file && file.type.startsWith('image/')) {
+      const objectUrl = URL.createObjectURL(file);
+      setPreview(objectUrl);
+      return () => URL.revokeObjectURL(objectUrl);
+    }
+  }, [file]);
+
+  const displayUrl = url || preview;
+  const accentClass = isBonus ? "text-orange-500" : "text-primary";
+
+  return (
+    <div className={cn(
+      "group relative flex min-w-0 flex-col items-center gap-2 rounded-2xl p-2 transition-all",
+      isBonus ? "bg-orange-500/5 hover:bg-orange-500/10 border border-orange-500/10" : "bg-surfaceContainerHigh hover:bg-surfaceContainerHighest border border-outlineVariant/10"
+    )}>
+      <div className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl bg-black/5 shadow-inner">
+        {isImage && displayUrl ? (
+          <img src={displayUrl} alt={displayName} className="h-full w-full object-cover transition-transform group-hover:scale-110" />
+        ) : isVideo ? (
+          <div className={cn("flex flex-col items-center", accentClass)}>
+            <Play size={24} fill="currentColor" />
+            <span className="mt-1 text-[8px] font-black uppercase">Video</span>
+          </div>
+        ) : isCSV ? (
+          <div className={cn("flex flex-col items-center", accentClass)}>
+            <FileText size={24} />
+            <span className="text-[8px] font-black mt-1">CSV</span>
+          </div>
+        ) : isPdf ? (
+          <div className={cn("flex flex-col items-center", accentClass)}>
+            <FileText size={24} />
+            <span className="mt-1 text-[8px] font-black uppercase">PDF</span>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center text-onSurfaceVariant/40">
+            <FileText size={24} />
+          </div>
+        )}
+
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute inset-0 bg-black/10 flex items-center justify-center transition-colors hover:bg-black/30"
+          >
+            <div className="rounded-full bg-black/40 p-2 backdrop-blur-sm">
+              <Eye size={18} className="text-white" />
+            </div>
+          </a>
+        )}
+      </div>
+
+      <div className="flex w-full items-center justify-between px-1 gap-1">
+        <span className="max-w-[64px] truncate text-[10px] font-bold text-onSurfaceVariant" title={displayName}>{displayName}</span>
+        {onRemove ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            aria-label={`Remove ${displayName}`}
+            className="text-onSurfaceVariant hover:text-red-500 transition-colors"
+          >
+            <XCircle size={14} />
+          </button>
+        ) : url ? (
+          <a
+            href={url}
+            download={displayName}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open ${displayName}`}
+            className="text-primary hover:text-primary/70 transition-colors"
+          >
+            <Download size={12} />
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function TaskDetailsModal({
+  isOpen,
+  onClose,
+  task,
+  user,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  task: TaskModel;
+  user: UserModel;
+}) {
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [showWithdrawConfirm, setShowWithdrawConfirm] = useState<{ isBonus: boolean } | null>(null);
+  const [selectedMainFiles, setSelectedMainFiles] = useState<File[]>([]);
+  const [selectedBonusFiles, setSelectedBonusFiles] = useState<File[]>([]);
+  const [activeView, setActiveView] = useState<"main" | "bonus">("main");
+
+  const mainDone = mainTaskCompletedForUser(task, user);
+  const mainSubmitted = isSubmittedForUser(task, user) && !mainDone;
+  const bonusDone = bonusTaskCompletedForUser(task, user);
+  const bonusSubmitted = isBonusSubmittedForUser(task, user) && !bonusDone;
+
+  // Find the proof if already submitted (Uses the same robust logic as mainTaskCompletedForUser)
+  const mainTx = useMemo(() => {
+    if (!user?.transactions) return null;
+    const taskIdLower = task.id.toLowerCase();
+    const taskTitleLower = (task.title || "").toLowerCase();
+
+    // Find the best matching transaction (prioritize ID match, then title) - search latest first
+    return [...user.transactions].reverse().find(t => {
+      if (t.isBonus) return false;
+
+      const txTaskId = (t.taskId || "").toLowerCase();
+      const txTitle = (t.title || t.description || "").toLowerCase();
+
+      // 1. Match by ID
+      if (txTaskId === taskIdLower) return true;
+
+      // 2. Match by exact title match (case insensitive)
+      if (txTitle === taskTitleLower) return true;
+
+      // 3. Match by containment
+      if (taskTitleLower.length > 3 && txTitle.includes(taskTitleLower)) return true;
+      if (txTitle.length > 3 && taskTitleLower.includes(txTitle)) return true;
+
+      // 4. Keyword match: If the transaction contains at least two significant words
+      const keywords = taskTitleLower.split(" ").filter(w => w.length > 3);
+      if (keywords.length > 0) {
+        const matchCount = keywords.filter(word => txTitle.includes(word)).length;
+        if (matchCount >= Math.min(2, keywords.length)) return true;
+      }
+
+      return false;
+    });
+  }, [user.transactions, task.id, task.title]);
+
+  const bonusTx = useMemo(() => {
+    if (!user?.transactions) return null;
+    const taskIdLower = task.id.toLowerCase();
+    const taskTitleLower = (task.title || "").toLowerCase();
+
+    return [...user.transactions].reverse().find(t => {
+      if (!t.isBonus) return false;
+      const txTaskId = (t.taskId || "").toLowerCase();
+      const txTitle = (t.title || t.description || "").toLowerCase();
+
+      // 1. Match by ID
+      if (txTaskId === taskIdLower) return true;
+
+      // 2. Match by exact title match (case insensitive)
+      if (txTitle === taskTitleLower) return true;
+
+      // 3. Match by containment
+      if (taskTitleLower.length > 3 && txTitle.includes(taskTitleLower)) return true;
+      if (txTitle.length > 3 && taskTitleLower.includes(txTitle)) return true;
+
+      // 4. Keyword match
+      const keywords = taskTitleLower.split(" ").filter(w => w.length > 3);
+      if (keywords.length > 0) {
+        const matchCount = keywords.filter(word => txTitle.includes(word)).length;
+        if (matchCount >= Math.min(2, keywords.length)) return true;
+      }
+
+      return false;
+    });
+  }, [user.transactions, task.id, task.title]);
+
+  useEffect(() => {
+    setMounted(true);
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+      // Clear selections when opening
+      setSelectedMainFiles([]);
+      setSelectedBonusFiles([]);
+      setActiveView("main");
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, isBonus: boolean) => {
+    if (e.target.files) {
+      const files = Array.from(e.target.files);
+      if (isBonus) {
+        setSelectedBonusFiles(prev => [...prev, ...files]);
+      } else {
+        setSelectedMainFiles(prev => [...prev, ...files]);
+      }
+    }
+  };
+
+  const removeFile = (index: number, isBonus: boolean) => {
+    if (isBonus) {
+      setSelectedBonusFiles(prev => prev.filter((_, i) => i !== index));
+    } else {
+      setSelectedMainFiles(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const handleWithdraw = async (isBonusSubmission: boolean) => {
+    setWithdrawing(true);
+    try {
+      await withdrawSubmission(user, task, isBonusSubmission);
+      setShowWithdrawConfirm(null);
+    } catch (error) {
+      console.error("Withdrawal failed:", error);
+      alert("Failed to withdraw submission. Please try again.");
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  const handleSubmit = async (isBonusSubmission: boolean) => {
+    const filesToUpload = isBonusSubmission ? selectedBonusFiles : selectedMainFiles;
+    if (filesToUpload.length === 0) {
+      alert("Please upload at least one file as proof of work.");
+      return;
+    }
+
+    // MIME type and Size validation
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    const ALLOWED_TYPES = [
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+      'application/pdf', 'text/csv',
+      'video/mp4', 'video/quicktime'
+    ];
+
+    for (const file of filesToUpload) {
+      if (file.size > MAX_SIZE) {
+        alert(`File "${file.name}" is too large. Max size is 5MB.`);
+        return;
+      }
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        // Fallback check for CSV if MIME type is missing or incorrect
+        if (file.name.toLowerCase().endsWith('.csv')) continue;
+
+        alert(`File "${file.name}" has an unsupported format. Please upload images, PDFs, CSVs, or MP4 videos.`);
+        return;
+      }
+    }
+
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      const { urls, names } = await uploadProof(user.email, filesToUpload, (progress) => {
+        setUploadProgress(Math.round(progress));
+      });
+      await markTaskCompleted(user, task, isBonusSubmission, urls, names);
+
+      // Delay navigation slightly to let user see 100% progress
+      setTimeout(() => {
+        router.push(`/task-completed?taskId=${encodeURIComponent(task.id)}${isBonusSubmission ? '&bonus=1' : ''}&proof=1`);
+        onClose();
+      }, 500);
+    } catch (error: any) {
+      console.error("Submission failed:", error);
+      alert(`Submission failed: ${error.message || "Unknown error"}. Please try again.`);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  if (!isOpen || !mounted || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div style={{ display: "contents" }}>
+      <ConfirmationModal
+        isOpen={!!showWithdrawConfirm}
+        onClose={() => setShowWithdrawConfirm(null)}
+        onConfirm={() => showWithdrawConfirm && handleWithdraw(showWithdrawConfirm.isBonus)}
+        title="Withdraw Submission?"
+        message="Are you sure you want to withdraw your submission? This will allow you to re-upload evidence."
+        confirmLabel={withdrawing ? "Withdrawing..." : "Withdraw"}
+        isDestructive
+        icon={Trash2}
+      />
+      <div className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-6" onClick={onClose}>
+        <motion.div
+          initial={{ y: "100%" }}
+          animate={{ y: 0 }}
+          exit={{ y: "100%" }}
+          transition={{ type: "spring", damping: 25, stiffness: 200 }}
+          onClick={(e) => e.stopPropagation()}
+          className="w-full max-w-[450px] rounded-t-[40px] sm:rounded-[40px] bg-surface p-8 shadow-2xl border-t sm:border border-outlineVariant/10 max-h-[90vh] flex flex-col relative"
+        >
+          <div className="sm:hidden absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-onSurfaceVariant/20 rounded-full" />
+
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2 text-primary">
+              {activeView === "bonus" ? (
+                <button onClick={() => setActiveView("main")} className="flex items-center gap-2 hover:opacity-70 transition-opacity">
+                  <ArrowLeft size={20} />
+                  <span className="text-xs font-black tracking-widest uppercase">Back to Task</span>
+                </button>
+              ) : (
+                <>
+                  <Component size={16} />
+                  <span className="text-xs font-black tracking-widest uppercase">{task.phase}</span>
+                </>
+              )}
+            </div>
+            <button onClick={onClose} className="h-10 w-10 rounded-full bg-surfaceContainerHighest flex items-center justify-center text-onSurface active:scale-90 transition-transform">
+              {activeView === "bonus" ? <X size={20} /> : <ArrowLeft size={20} />}
+            </button>
+          </div>
+
+          <div className="overflow-y-auto custom-scrollbar pr-2 pb-6">
+            <AnimatePresence mode="wait">
+              {activeView === "main" ? (
+                <motion.div
+                  key="main-view"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <h2 className="text-3xl font-black text-onSurface leading-tight">{task.title}</h2>
+
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <div className="flex items-center gap-2 rounded-2xl bg-primary/10 px-4 py-2 text-primary border border-primary/20">
+                      <Award size={18} />
+                      <span className="text-sm font-black">{task.credits} Credits</span>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-2xl bg-surfaceContainerHigh px-4 py-2 text-onSurfaceVariant border border-outlineVariant/10">
+                      <Calendar size={18} />
+                      <span className="text-sm font-bold">{formatDue(task.dueDate)}</span>
+                    </div>
+                    {mainDone ? (
+                      <div className="flex items-center gap-2 rounded-2xl bg-green-500/10 px-4 py-2 text-green-500 border border-green-500/20">
+                        <CheckCircle size={18} />
+                        <span className="text-sm font-bold">Approved</span>
+                      </div>
+                    ) : mainSubmitted ? (
+                      <div className="flex items-center gap-2 rounded-2xl bg-orange-500/10 px-4 py-2 text-orange-500 border border-orange-500/20">
+                        <Clock size={18} />
+                        <span className="text-sm font-bold">Pending Review</span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {mainTx?.proofUrls && mainTx.proofUrls.length > 0 && (
+                    <div className="mt-8 bg-surfaceContainerLow rounded-3xl p-6 border border-outlineVariant/10">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-primary">Submitted Evidence</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn("text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase",
+                              mainTx.status === 'approved' ? "bg-green-500/10 text-green-500" :
+                                mainTx.status === 'rejected' ? "bg-red-500/10 text-red-500" :
+                                  "bg-orange-500/10 text-orange-500"
+                            )}>
+                              {mainTx.status}
+                            </span>
+                            <span className="text-[9px] font-bold text-onSurfaceVariant/40">• {formatShortDate(mainTx.date)}</span>
+                          </div>
+                        </div>
+                        {!mainDone && mainTx.status === 'pending' && (
+                          <button
+                            disabled={withdrawing}
+                            onClick={() => setShowWithdrawConfirm({ isBonus: false })}
+                            className="text-[10px] font-black text-orange-500 uppercase hover:underline flex items-center gap-1 disabled:opacity-50"
+                          >
+                            {withdrawing ? <RefreshCw size={10} className="animate-spin" /> : <Trash2 size={10} />} Withdraw
+                          </button>
+                        )}
+                      </div>
+
+                      {mainTx.adminRemarks && (
+                        <div className="mb-4 rounded-xl bg-red-500/5 border border-red-500/10 p-3">
+                          <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-red-500 mb-1">
+                            <MessageSquare size={10} /> Feedback
+                          </div>
+                          <p className="text-xs text-onSurface leading-tight italic">{mainTx.adminRemarks}</p>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-3 gap-3">
+                        {mainTx.proofUrls.map((url, i) => (
+                          <FilePreviewItem
+                            key={i}
+                            url={url}
+                            name={mainTx.proofNames?.[i]}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-8">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-onSurfaceVariant/60 mb-3">Task Brief & Instructions</h4>
+                    <div className="rounded-3xl bg-surfaceContainerLow p-6 border border-outlineVariant/10">
+                      <p className="text-base text-onSurface leading-relaxed whitespace-pre-wrap">
+                        {task.description || "No specific instructions provided for this task. Please reach out to your supervisor if you're unsure about the requirements."}
+                      </p>
+                    </div>
+                  </div>
+
+                  {task.bonusAvailable && (
+                    <button
+                      onClick={() => setActiveView("bonus")}
+                      className="mt-8 w-full group"
+                    >
+                      <div className={cn(
+                        "rounded-3xl p-6 border transition-all text-left flex items-center justify-between",
+                        bonusDone ? "bg-green-500/5 border-green-500/20" :
+                          bonusSubmitted ? "bg-orange-500/5 border-orange-500/20" :
+                            "bg-orange-500/5 border-orange-500/20 group-hover:bg-orange-500/10"
+                      )}>
+                        <div>
+                          <div className={cn("flex items-center gap-2 mb-1",
+                            bonusDone ? "text-green-500" : "text-orange-500"
+                          )}>
+                            <Sparkles size={18} />
+                            <span className="text-sm font-black uppercase tracking-wider">Bonus Side Quest</span>
+                          </div>
+                          <p className="text-xs text-onSurfaceVariant font-bold">
+                            {bonusDone ? "Successfully Completed!" : bonusSubmitted ? "Evidence Under Review" : "Earn extra credits"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={cn("text-sm font-black", bonusDone ? "text-green-500" : "text-orange-500")}>
+                            +{task.bonusCredits}
+                          </span>
+                          <ChevronRight size={20} className={bonusDone ? "text-green-500" : "text-orange-500"} />
+                        </div>
+                      </div>
+                    </button>
+                  )}
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="bonus-view"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 rounded-xl bg-orange-500/10 text-orange-500">
+                      <Sparkles size={24} />
+                    </div>
+                    <h2 className="text-2xl font-black text-onSurface leading-tight">Bonus Task</h2>
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <div className="flex items-center gap-2 rounded-2xl bg-orange-500/10 px-4 py-2 text-orange-500 border border-orange-500/20">
+                      <Award size={18} />
+                      <span className="text-sm font-black">{task.bonusCredits} Bonus Credits</span>
+                    </div>
+                    {bonusDone ? (
+                      <div className="flex items-center gap-2 rounded-2xl bg-green-500/10 px-4 py-2 text-green-500 border border-green-500/20">
+                        <CheckCircle size={18} />
+                        <span className="text-sm font-bold">Approved</span>
+                      </div>
+                    ) : bonusSubmitted ? (
+                      <div className="flex items-center gap-2 rounded-2xl bg-orange-500/10 px-4 py-2 text-orange-500 border border-orange-500/20">
+                        <Clock size={18} />
+                        <span className="text-sm font-bold">Pending Review</span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {bonusTx?.proofUrls && bonusTx.proofUrls.length > 0 && (
+                    <div className="mt-8 bg-surfaceContainerLow rounded-3xl p-6 border border-outlineVariant/10">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-orange-500">Submitted Proof</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn("text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase",
+                              bonusTx.status === 'approved' ? "bg-green-500/10 text-green-500" :
+                                bonusTx.status === 'rejected' ? "bg-red-500/10 text-red-500" :
+                                  "bg-orange-500/10 text-orange-500"
+                            )}>
+                              {bonusTx.status}
+                            </span>
+                            <span className="text-[9px] font-bold text-onSurfaceVariant/40">• {formatShortDate(bonusTx.date)}</span>
+                          </div>
+                        </div>
+                        {!bonusDone && bonusTx.status === 'pending' && (
+                          <button
+                            disabled={withdrawing}
+                            onClick={() => setShowWithdrawConfirm({ isBonus: true })}
+                            className="text-[10px] font-black text-orange-500 uppercase hover:underline flex items-center gap-1 disabled:opacity-50"
+                          >
+                            {withdrawing ? <RefreshCw size={10} className="animate-spin" /> : <Trash2 size={10} />} Withdraw
+                          </button>
+                        )}
+                      </div>
+
+                      {bonusTx.adminRemarks && (
+                        <div className="mb-4 rounded-xl bg-red-500/5 border border-red-500/10 p-3">
+                          <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-red-500 mb-1">
+                            <MessageSquare size={10} /> Feedback
+                          </div>
+                          <p className="text-xs text-onSurface leading-tight italic">{bonusTx.adminRemarks}</p>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-3 gap-3">
+                        {bonusTx.proofUrls.map((url, i) => (
+                          <FilePreviewItem
+                            key={i}
+                            url={url}
+                            name={bonusTx.proofNames?.[i]}
+                            isBonus
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-8">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-500/60 mb-3">Bonus Instructions</h4>
+                    <div className="rounded-3xl bg-orange-500/5 p-6 border border-orange-500/10">
+                      <p className="text-base text-onSurface leading-relaxed whitespace-pre-wrap">
+                        {task.bonusDescription}
+                      </p>
+                    </div>
+                  </div>
+
+                  {!bonusDone && !bonusSubmitted && (
+                    <div className="mt-8 bg-orange-500/5 rounded-3xl p-6 border border-orange-500/10">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 block mb-4">Upload Bonus Evidence</span>
+                      <input
+                        type="file"
+                        id="bonus-proof-upload"
+                        className="hidden"
+                        multiple
+                        onChange={(e) => handleFileChange(e, true)}
+                      />
+                      <label
+                        htmlFor="bonus-proof-upload"
+                        className="flex flex-col items-center justify-center border-2 border-dashed border-orange-500/20 rounded-2xl p-8 cursor-pointer hover:bg-orange-500/10 transition-colors"
+                      >
+                        <Download size={32} className="text-orange-500 mb-3" />
+                        <span className="text-sm font-bold text-onSurface text-center">
+                          {selectedBonusFiles.length > 0 ? `${selectedBonusFiles.length} files selected` : "Select images or documents"}
+                        </span>
+                        <span className="text-xs text-onSurfaceVariant mt-2">Maximum file size: 5MB</span>
+                      </label>
+
+                      {selectedBonusFiles.length > 0 && !uploading && (
+                        <div className="mt-6">
+                          <div className="grid grid-cols-3 gap-3">
+                            {selectedBonusFiles.map((f, i) => (
+                              <FilePreviewItem
+                                key={i}
+                                file={f}
+                                onRemove={() => removeFile(i, true)}
+                                isBonus
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {uploading && (
+                        <div className="mt-6">
+                          <div className="flex items-center justify-between text-[10px] font-black uppercase text-orange-500 mb-2">
+                            <span>Uploading Bonus Proof</span>
+                            <span>{uploadProgress}%</span>
+                          </div>
+                          <div className="h-2 w-full bg-orange-500/10 rounded-full overflow-hidden">
+                            <motion.div
+                              className="h-full bg-orange-500"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${uploadProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <button
+                        disabled={uploading || selectedBonusFiles.length === 0}
+                        onClick={() => handleSubmit(true)}
+                        className="mt-6 w-full rounded-2xl bg-orange-500 py-4 font-black text-sm text-white shadow-lg active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {uploading ? <RefreshCw size={18} className="animate-spin" /> : <Check size={18} strokeWidth={3} />}
+                        {uploading ? `Uploading ${uploadProgress}%` : "Submit Bonus Evidence"}
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="mt-auto pt-6 flex flex-col gap-3">
+            {activeView === "main" && (
+              <>
+                {!mainDone && !mainSubmitted && (
+                  <div className="bg-surfaceContainerLow rounded-3xl p-4 border border-outlineVariant/10 mb-2">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-onSurfaceVariant">Proof of Completion</span>
+                      {parseDate(task.dueDate).getTime() < Date.now() && (
+                        <span className="text-[10px] font-bold text-red-500 flex items-center gap-1">
+                          <Clock size={10} /> Late (-50%)
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      id="main-proof-upload"
+                      className="hidden"
+                      multiple
+                      onChange={(e) => handleFileChange(e, false)}
+                    />
+                    <label
+                      htmlFor="main-proof-upload"
+                      className="flex flex-col items-center justify-center border-2 border-dashed border-outlineVariant/20 rounded-2xl p-4 cursor-pointer hover:bg-surfaceContainerHigh transition-colors"
+                    >
+                      <Download size={20} className="text-primary mb-2" />
+                      <span className="text-xs font-bold text-onSurface text-center">
+                        {selectedMainFiles.length > 0 ? `${selectedMainFiles.length} files selected` : "Select images, videos, or documents"}
+                      </span>
+                      <span className="text-[10px] text-onSurfaceVariant mt-1">Proof is required for validation</span>
+                    </label>
+                    {selectedMainFiles.length > 0 && !uploading && (
+                      <div className="mt-4 grid grid-cols-4 gap-2">
+                        {selectedMainFiles.map((f, i) => (
+                          <FilePreviewItem
+                            key={i}
+                            file={f}
+                            onRemove={() => removeFile(i, false)}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {uploading && (
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between text-[10px] font-black uppercase text-onSurfaceVariant mb-1">
+                          <span>Uploading Evidence</span>
+                          <span>{uploadProgress}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-surfaceContainerHigh rounded-full overflow-hidden">
+                          <motion.div
+                            className="h-full bg-primary"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  disabled={mainSubmitted || mainDone || uploading || (!mainSubmitted && selectedMainFiles.length === 0)}
+                  onClick={() => handleSubmit(false)}
+                  className="w-full rounded-[24px] bg-primary py-5 font-black text-sm text-white transition active:scale-95 flex items-center justify-center gap-3 shadow-[0_12px_24px_rgba(0,93,167,0.3)] disabled:opacity-50 disabled:grayscale"
+                >
+                  {mainDone ? <CheckCircle size={20} /> : (mainSubmitted || uploading) ? <Clock size={20} /> : <Check size={20} strokeWidth={3} />}
+                  {mainDone ? "Approved & Completed" : uploading ? `Uploading ${uploadProgress}%` : mainSubmitted ? "Pending Admin Approval" : "Submit Task for Review"}
+                </button>
+              </>
+            )}
+
+            <button
+              onClick={activeView === "bonus" ? () => setActiveView("main") : onClose}
+              className="w-full rounded-[24px] bg-surfaceContainerHighest py-4 font-bold text-sm text-onSurface transition active:scale-95"
+            >
+              {activeView === "bonus" ? "Back to Task" : "Go Back"}
+            </button>
+          </div>
+
+        </motion.div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 
 export function RoleSelectorScreen() {
   const router = useRouter();
@@ -827,7 +1724,7 @@ export function RoleSelectorScreen() {
       <SafeArea className="py-10">
         <motion.div className="flex flex-col items-center text-center" variants={staggerContainer} initial="hidden" animate="visible">
           <motion.div variants={staggerItem} animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: Infinity, duration: 2 }}>
-            <img src="/assets/app_logo.png" alt="Stitch" className="h-[120px] w-[120px] rounded-2xl object-contain" />
+            <img src="/assets/app_logo.png" alt="Valencia Nutrition" className="h-[120px] w-[120px] rounded-2xl object-contain" />
           </motion.div>
           <motion.h1 variants={staggerItem} className="mt-8 text-4xl font-extrabold leading-tight">Select Your Role</motion.h1>
           <motion.p variants={staggerItem} className="mt-3 text-base text-onSurfaceVariant">Choose an experience to preview the App.</motion.p>
@@ -867,23 +1764,36 @@ export function RoleSelectorScreen() {
 }
 
 export function SignInScreen() {
-  const router = useRouter();
   const auth = useCurrentUser();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const registered = searchParams?.get('registered') === 'true';
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  // Auto-redirect if already logged in
   useEffect(() => {
-    if (!auth.loading && auth.userData) {
+    if (registered) {
+      setMessage("Account created successfully! Please sign in.");
+    }
+  }, [registered]);
+
+  // Auto-redirect if already logged in (but skip if we just registered)
+  useEffect(() => {
+    // Crucial: check the URL directly if searchParams is transient
+    const urlParams = new URLSearchParams(window.location.search);
+    const isJustRegistered = urlParams.get('registered') === 'true' || registered;
+
+    if (!auth.loading && auth.userData && !isJustRegistered) {
       if (auth.userData.role === "Admin") {
         router.replace("/admin/dashboard");
       } else {
         router.replace("/dashboard");
       }
     }
-  }, [auth.loading, auth.userData, router]);
+  }, [auth.loading, auth.userData, router, registered]);
 
   async function handleSignIn() {
     if (!email || !password) {
@@ -924,7 +1834,7 @@ export function SignInScreen() {
     <Screen>
       <SafeArea className="pt-0">
         <BackHeader />
-        <img src="/assets/app_logo.png" alt="Stitch" className="mt-2 h-16 w-16 rounded-xl object-contain" />
+        <img src="/assets/app_logo.png" alt="Valencia Nutrition" className="mt-2 h-16 w-16 rounded-xl object-contain" />
         <h1 className="mt-8 text-[44px] font-bold leading-none">Welcome Back</h1>
         <p className="mt-3 text-base text-onSurfaceVariant">
           Resume your progress and distilled focus.
@@ -985,8 +1895,9 @@ export function CreateAccountScreen() {
     if (password.length < 8) return setMessage("Password must be at least 8 characters.");
     setLoading(true);
     try {
-      await registerUser(name.trim(), email.trim(), password);
-      router.push("/sign-in");
+      await registerUser(name.trim(), email.trim().toLowerCase(), password);
+      // Use window.location.href to force a full reload and clear any transient Firebase auth states
+      window.location.href = "/sign-in?registered=true";
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Registration failed.");
     } finally {
@@ -1012,8 +1923,12 @@ export function CreateAccountScreen() {
           type="button"
           disabled={loading}
           onClick={async () => {
-            await loginWithGoogle();
-            router.push("/dashboard");
+            try {
+              await loginWithGoogle();
+              router.push("/dashboard");
+            } catch (err: any) {
+              setMessage(err.message || "Google login failed.");
+            }
           }}
           className="mt-4 flex h-14 w-full items-center justify-center rounded-2xl border border-outlineVariant/30 bg-surfaceContainerLowest font-semibold"
         >
@@ -1034,7 +1949,9 @@ export function DashboardScreen() {
 
   const myTasks = tasksState.data.filter((task) => task.assignedUserEmails.length === 0 || task.assignedUserEmails.includes(userData.email));
   const completedTasks = myTasks.filter((task) => completedForUser(task, userData)).length;
-  const activeTasks = tasksState.data.filter((task) => activeForUser(task, userData)).slice(0, 3);
+  const activeTasks = tasksState.data.filter((task) => activeForUser(task, userData));
+  const pendingTasks = activeTasks.filter(task => isSubmittedForUser(task, userData) && !mainTaskCompletedForUser(task, userData)).length;
+  const displayTasks = activeTasks.slice(0, 3);
   const progress = myTasks.length ? Math.round((completedTasks / myTasks.length) * 100) : 0;
   const unread = notifications.data.filter((item) => !item.isRead).length;
 
@@ -1077,7 +1994,7 @@ export function DashboardScreen() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.15, ease: [0.2, 0, 0, 1] }}
         >
-          <SmallStat title="Credits" value={`${userData.credits}`} subtitle="Total Balance" icon={Zap} color="#005DA7" onClick={() => router.push("/leaderboard")} />
+          <SmallStat title="Credits" value={`${userData.credits}`} subtitle={`${pendingTasks} Pending Review`} icon={Zap} color="#005DA7" onClick={() => router.push("/leaderboard")} />
           <SmallStat title="Progress" value={`${progress}%`} subtitle={`${completedTasks} of ${myTasks.length} tasks`} icon={Flame} color="#F59E0B" onClick={() => router.push("/performance")} />
         </motion.div>
         <motion.div
@@ -1111,7 +2028,7 @@ export function DashboardScreen() {
               <p className="text-sm text-onSurfaceVariant">You&apos;re ahead of the curve.</p>
             </motion.div>
           ) : (
-            activeTasks.map((task, index) => (
+            displayTasks.map((task, index) => (
               <motion.div key={task.id} variants={staggerItem} custom={index}>
                 <DashboardTaskCard task={task} user={userData} />
               </motion.div>
@@ -1367,6 +2284,27 @@ function TransactionCard({ tx }: { tx: VaultTransaction }) {
         </div>
         <span className={cn("ml-3 text-xl font-black", tx.status === "rejected" ? "text-onSurfaceVariant" : "text-primary")}>{tx.status === "rejected" ? "" : "+"}{tx.amount}</span>
       </div>
+
+      {tx.proofUrls && tx.proofUrls.length > 0 && (
+        <div className="mt-4">
+          <span className="text-[10px] font-black uppercase tracking-widest text-onSurfaceVariant/60 block mb-2">My Evidence</span>
+          <div className="flex flex-wrap gap-2">
+            {tx.proofUrls.map((url, i) => (
+              <a
+                key={i}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 rounded-xl bg-surfaceContainerLow px-3 py-2 text-[10px] font-bold text-primary hover:bg-surfaceContainerHigh transition-colors border border-outlineVariant/10"
+              >
+                <Download size={12} />
+                <span className="truncate max-w-[100px]">{tx.proofNames?.[i] || `File ${i + 1}`}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {tx.adminRemarks ? (
         <div className="mt-4 rounded-lg border border-outlineVariant/50 bg-surfaceContainerLow p-3">
           <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-onSurfaceVariant">
@@ -1632,6 +2570,15 @@ export function PhaseDetailScreen({ phaseName }: { phaseName?: string }) {
                       <span className={cn("rounded-full p-2.5", done ? "bg-primary/10 text-primary" : "bg-surfaceContainerHigh text-outlineVariant")}>{done ? <CheckCircle2 size={24} /> : <Circle size={24} />}</span>
                       <span className="ml-4 flex-1">
                         <span className={cn("block font-black", done && "text-onSurfaceVariant/50 line-through")}>{task.title}</span>
+                        {!done && (
+                          <span className={cn(
+                            "inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider mb-1 px-2 py-0.5 rounded-full",
+                            formatDue(task.dueDate) === "Overdue" ? "text-red-500 bg-red-500/10" : "text-primary bg-primary/10"
+                          )}>
+                            <Clock size={10} />
+                            Due: {formatDue(task.dueDate)}
+                          </span>
+                        )}
                         {task.description ? <span className="mt-1 block line-clamp-2 text-xs text-onSurfaceVariant">{task.description}</span> : null}
                       </span>
                       <span className="text-right text-sm font-black text-primary">{task.credits} pts</span>
@@ -1744,6 +2691,16 @@ function NotificationTile({ notification, userEmail }: { notification: AppNotifi
           <p className="mt-1 block text-sm text-onSurfaceVariant font-medium leading-relaxed line-clamp-2">
             {notification.message}
           </p>
+          {notification.metadata?.remarks && (
+            <div className="mt-3 rounded-2xl bg-surfaceContainerHigh/50 p-3 border border-outlineVariant/10">
+              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary mb-1">
+                <MessageSquare size={12} /> Admin Note
+              </div>
+              <p className="text-xs italic text-onSurface/80 leading-relaxed">
+                &quot;{String(notification.metadata.remarks)}&quot;
+              </p>
+            </div>
+          )}
           <span className="mt-3 block text-[10px] font-black text-onSurfaceVariant/30 uppercase tracking-[0.1em]">
             {formatRelative(notification.timestamp)}
           </span>
@@ -1790,7 +2747,7 @@ function ConfirmationModal({
     };
   }, [isOpen]);
 
-  if (!isOpen || !mounted) return null;
+  if (!isOpen || !mounted || typeof document === "undefined") return null;
 
   return createPortal(
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#0D0E11]/80 backdrop-blur-sm p-6" onClick={onClose}>
@@ -1990,7 +2947,7 @@ export function ProfileScreen({ admin = false }: { admin?: boolean }) {
         </motion.div>
       </SafeArea>
 
-      <SecurityModal
+      <ProfileSettingsModal
         isOpen={showSecurityModal}
         onClose={() => setShowSecurityModal(false)}
         user={userData}
@@ -2013,12 +2970,14 @@ export function ProfileScreen({ admin = false }: { admin?: boolean }) {
   );
 }
 
-function SecurityModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: UserModel }) {
+function ProfileSettingsModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: UserModel }) {
   const [name, setName] = useState(user.fullName);
   const [avatar, setAvatar] = useState(user.profilePictureUrl ?? "");
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   const [mounted, setMounted] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -2034,6 +2993,30 @@ function SecurityModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: ()
       document.body.style.touchAction = "unset";
     };
   }, [isOpen]);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setMessage("Error: Image must be under 2MB");
+      return;
+    }
+
+    setUploading(true);
+    setMessage("");
+    try {
+      const url = await uploadProfilePicture(user.email, file);
+      setAvatar(url);
+      setMessage("Success: Photo updated!");
+    } catch (err: any) {
+      console.error("Upload failed:", err);
+      const errorMsg = err.code ? `Upload Error: ${err.code}` : "Error: Failed to upload image.";
+      setMessage(errorMsg);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function handleSave() {
     setLoading(true);
@@ -2054,7 +3037,7 @@ function SecurityModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: ()
     setLoading(true);
     try {
       await sendReset(user.email);
-      setMessage("Success: Reset link sent to email.");
+      setMessage("Success: Reset link sent!");
     } catch (err) {
       setMessage("Failed to send reset link.");
     } finally {
@@ -2062,58 +3045,99 @@ function SecurityModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: ()
     }
   }
 
-  if (!isOpen || !mounted) return null;
+  if (!isOpen || !mounted || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#0D0E11]/80 backdrop-blur-sm p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-6" onClick={onClose}>
       <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 25, stiffness: 200 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-[340px] rounded-[32px] bg-[#1A1C1E] p-6 shadow-2xl border border-white/5 max-h-[85vh] flex flex-col"
+        className="w-full max-w-[400px] rounded-t-[40px] sm:rounded-[40px] bg-surfaceContainerLow p-8 shadow-2xl border-t sm:border border-outlineVariant/10 max-h-[90vh] flex flex-col relative"
       >
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-bold text-white">Security</h3>
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Lock size={20} className="text-primary" />
-          </div>
+        {/* Handle for mobile */}
+        <div className="sm:hidden absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-onSurfaceVariant/20 rounded-full" />
+
+        <div className="flex items-center justify-between mb-8 mt-2">
+          <h3 className="text-2xl font-black text-onSurface tracking-tight">Edit Profile</h3>
+          <button onClick={onClose} className="h-10 w-10 rounded-full bg-surfaceContainerHighest flex items-center justify-center text-onSurface active:scale-90 transition-transform">
+            <ArrowLeft size={20} />
+          </button>
         </div>
 
-        <div className="space-y-6 overflow-y-auto pr-1 custom-scrollbar flex-1">
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold tracking-widest text-onSurfaceVariant uppercase ml-1">Username</label>
+        <div className="space-y-8 overflow-y-auto pr-1 custom-scrollbar flex-1 pb-4">
+          {/* Avatar Edit Section */}
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+              <div className="relative h-32 w-32 rounded-full overflow-hidden ring-4 ring-primary/20 transition-transform group-active:scale-95 shadow-2xl">
+                <ProfileAvatar name={name} avatarId={avatar} size={128} />
+                <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Edit3 size={24} className="text-white mb-1" />
+                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Change</span>
+                </div>
+                {uploading && (
+                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                    <RefreshCw size={32} className="text-white animate-spin" />
+                  </div>
+                )}
+              </div>
+              <div className="absolute -bottom-1 -right-1 h-10 w-10 rounded-full bg-primary flex items-center justify-center text-white border-4 border-surfaceContainerLow shadow-lg group-hover:scale-110 transition-transform">
+                <Plus size={20} strokeWidth={3} />
+              </div>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept="image/*"
+                className="hidden"
+              />
+            </div>
+            <div className="text-center">
+              <p className="text-xs font-bold text-onSurfaceVariant uppercase tracking-[0.2em]">Profile Picture</p>
+              <p className="text-[10px] text-onSurfaceVariant/60 mt-1">Tap to upload a custom photo</p>
+            </div>
+          </div>
+
+          {/* Name Field */}
+          <div className="space-y-3">
+            <label className="text-[10px] font-black tracking-[0.2em] text-onSurfaceVariant uppercase ml-1">Full Name</label>
             <div className="relative group">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/60">
-                <User size={18} />
+              <div className="absolute left-5 top-1/2 -translate-y-1/2 text-primary">
+                <User size={20} />
               </div>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Full name"
-                className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 font-bold text-base text-white outline-none focus:border-primary/50 transition-all"
+                placeholder="Enter your name"
+                className="w-full bg-surfaceContainerLowest border border-outlineVariant/10 rounded-[24px] py-5 pl-14 pr-6 font-bold text-base text-onSurface outline-none focus:border-primary/40 focus:bg-surfaceContainerLow transition-all"
               />
             </div>
           </div>
 
-          <div className="space-y-3">
-            <label className="text-[10px] font-bold tracking-widest text-onSurfaceVariant uppercase ml-1">Avatar</label>
-            <div className="grid grid-cols-4 gap-2">
+          {/* Presets Grid */}
+          <div className="space-y-4 pt-4 border-t border-outlineVariant/10">
+            <div className="flex items-center justify-between px-1">
+              <label className="text-[10px] font-black tracking-[0.2em] text-onSurfaceVariant uppercase">Or use an avatar</label>
+              <span className="text-[10px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase">Presets</span>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
               {avatarPresets.map((preset) => (
                 <button
                   key={preset.id}
                   onClick={() => setAvatar(preset.id)}
                   className={cn(
-                    "relative aspect-square rounded-xl flex items-center justify-center transition-all",
+                    "relative aspect-square rounded-2xl flex items-center justify-center transition-all active:scale-90",
                     avatar === preset.id
-                      ? "bg-primary/20 ring-1 ring-primary"
-                      : "bg-white/5 border border-white/10"
+                      ? "bg-primary shadow-[0_8px_20px_rgba(0,93,167,0.3)] scale-105 z-10"
+                      : "bg-surfaceContainerLowest border border-outlineVariant/10 hover:border-outlineVariant/20"
                   )}
                 >
-                  <ProfileAvatar name={preset.label} avatarId={preset.id} size={32} />
+                  <ProfileAvatar name={preset.label} avatarId={preset.id} size={40} />
                   {avatar === preset.id && (
-                    <div className="absolute -top-1 -right-1 bg-primary rounded-full p-0.5 text-white shadow-lg">
-                      <Check size={8} strokeWidth={4} />
+                    <div className="absolute -top-1 -right-1 bg-white rounded-full p-1 text-primary shadow-lg ring-2 ring-primary">
+                      <Check size={10} strokeWidth={4} />
                     </div>
                   )}
                 </button>
@@ -2121,49 +3145,57 @@ function SecurityModal({ isOpen, onClose, user }: { isOpen: boolean; onClose: ()
             </div>
           </div>
 
-          <div className="pt-4 border-t border-white/5">
+          {/* Security Actions */}
+          <div className="pt-6 border-t border-outlineVariant/10">
             <button
               onClick={handleResetPassword}
               disabled={loading}
-              className="group w-full bg-white/5 rounded-2xl p-4 border border-white/5 flex items-center justify-between transition-all active:scale-[0.98]"
+              className="group w-full bg-red-500/5 rounded-[24px] p-5 border border-red-500/10 flex items-center justify-between transition-all active:scale-[0.98] hover:bg-red-500/10"
             >
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-red-500/10 flex items-center justify-center">
-                  <Key size={16} className="text-red-500" />
+              <div className="flex items-center gap-4">
+                <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center">
+                  <Key size={18} className="text-red-500" />
                 </div>
                 <div className="text-left">
-                  <span className="block font-bold text-sm text-white">Reset Password</span>
+                  <span className="block font-bold text-sm text-onSurface">Reset Password</span>
+                  <span className="block text-[10px] text-red-500/60 font-medium">Send secure link to email</span>
                 </div>
               </div>
-              <ChevronRight size={16} className="text-onSurfaceVariant" />
+              <ArrowRight size={18} className="text-red-500/40 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
         </div>
 
-        <div className="mt-6 flex flex-col gap-2 shrink-0">
+        <div className="mt-8 flex flex-col gap-3 shrink-0">
           <button
             onClick={handleSave}
-            disabled={loading}
-            className="w-full rounded-2xl bg-primary py-3.5 font-bold text-sm text-white transition active:scale-95 flex items-center justify-center gap-2"
+            disabled={loading || uploading}
+            className="w-full rounded-[24px] bg-primary py-5 font-black text-sm text-white transition active:scale-95 flex items-center justify-center gap-3 shadow-[0_12px_24px_rgba(0,93,167,0.3)] disabled:opacity-50 disabled:grayscale"
           >
-            {loading ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-            {loading ? "Updating..." : "Save Changes"}
+            {loading ? <RefreshCw className="animate-spin" size={20} /> : <Save size={20} />}
+            {loading ? "Saving Changes..." : "Apply Changes"}
           </button>
           <button
             onClick={onClose}
-            className="w-full rounded-2xl bg-white/5 py-3 font-bold text-sm text-onSurfaceVariant transition active:scale-95"
+            className="w-full rounded-[24px] bg-surfaceContainerHighest py-4 font-bold text-sm text-onSurface transition active:scale-95"
           >
-            Cancel
+            Go Back
           </button>
         </div>
 
         {message && (
-          <div className={cn(
-            "mt-4 p-3 rounded-xl text-center font-bold text-xs",
-            message.startsWith("Success") ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"
-          )}>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={cn(
+              "absolute -top-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full text-xs font-black shadow-2xl z-20 whitespace-nowrap border",
+              message.includes("Success")
+                ? "bg-green-500 text-white border-green-400"
+                : "bg-red-500 text-white border-red-400"
+            )}
+          >
             {message}
-          </div>
+          </motion.div>
         )}
       </motion.div>
     </div>,
@@ -2214,18 +3246,32 @@ export function TaskCompletedScreen() {
   const tasks = useTasks();
   const taskId = params.get("taskId") ?? undefined;
   const isBonus = params.get("bonus") === "1";
+  const hasProof = params.get("proof") === "1";
   const task = tasks.data.find((item) => item.id === taskId);
-  const credits = isBonus ? task?.bonusCredits ?? 0 : task?.credits ?? Number(params.get("credits") ?? 0);
+
+  const tx = useMemo(() => {
+    if (!userData?.transactions || !taskId) return null;
+    return [...userData.transactions].reverse().find(t =>
+      t.taskId === taskId &&
+      Boolean(t.isBonus) === isBonus
+    );
+  }, [userData?.transactions, taskId, isBonus]);
+
+  const isLate = !isBonus && task && parseDate(task.dueDate).getTime() < Date.now();
+  const credits = isLate
+    ? Math.round((task?.credits ?? 0) / 2)
+    : (isBonus ? task?.bonusCredits ?? 0 : task?.credits ?? Number(params.get("credits") ?? 0));
+
   const title = isBonus ? "Bonus Task" : task?.title ?? params.get("taskName") ?? "Task";
-  const [processed, setProcessed] = useState(false);
   const [showConfetti, setShowConfetti] = useState(true);
 
   React.useEffect(() => {
-    if (!processed && userData && task) {
-      setProcessed(true);
-      markTaskCompleted(userData, task, isBonus).catch(() => undefined);
+    // If we came here without proof flag (legacy or direct URL), try to mark completed
+    // but the new flow handles it in the modal before redirecting.
+    if (!hasProof && userData && task) {
+       markTaskCompleted(userData, task, isBonus).catch(() => undefined);
     }
-  }, [processed, userData, task, isBonus]);
+  }, [userData, task, isBonus, hasProof]);
 
   React.useEffect(() => {
     const timer = setTimeout(() => setShowConfetti(false), 4000);
@@ -2304,15 +3350,41 @@ export function TaskCompletedScreen() {
               +<AnimatedCounter value={credits} duration={1.5} /> Credits
             </div>
             <motion.div
-              className="text-xs font-bold tracking-[0.2em] text-onSurfaceVariant"
+              className="text-xs font-black tracking-[0.2em] text-onSurfaceVariant flex flex-col gap-1"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 1.8 }}
             >
-              PENDING REVIEW
+              {isLate && <span className="text-red-500">LATE SUBMISSION PENALTY APPLIED</span>}
+              <span>PENDING REVIEW</span>
             </motion.div>
           </GhostCard>
         </motion.div>
+
+        {tx && tx.proofUrls && tx.proofUrls.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 1.3 }}
+            className="mx-auto mt-12 w-full max-w-sm px-4"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <span className="h-[1px] flex-1 bg-outlineVariant/20" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-onSurfaceVariant/60 whitespace-nowrap">Submitted Evidence</span>
+              <span className="h-[1px] flex-1 bg-outlineVariant/20" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {tx.proofUrls.map((url, i) => (
+                <FilePreviewItem
+                  key={i}
+                  url={url}
+                  name={tx.proofNames?.[i]}
+                  isBonus={isBonus}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -2734,15 +3806,21 @@ function ReviewModal({
   title,
   actionLabel,
   isDestructive = false,
+  requestedCredits,
+  showCreditMeter = false,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (remarks: string) => void;
+  onConfirm: (remarks: string, awardCredits?: number) => void;
   title: string;
   actionLabel: string;
   isDestructive?: boolean;
+  requestedCredits?: number;
+  showCreditMeter?: boolean;
 }) {
+  const maxCredits = Math.max(1, Math.round(Number(requestedCredits) || 1));
   const [remarks, setRemarks] = useState("");
+  const [awardCredits, setAwardCredits] = useState(maxCredits);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -2760,7 +3838,14 @@ function ReviewModal({
     };
   }, [isOpen]);
 
-  if (!isOpen || !mounted) return null;
+  useEffect(() => {
+    if (isOpen) {
+      setRemarks("");
+      setAwardCredits(maxCredits);
+    }
+  }, [isOpen, maxCredits]);
+
+  if (!isOpen || !mounted || typeof document === "undefined") return null;
 
   return createPortal(
     <div className="fixed inset-0 z-[99999] flex items-end justify-center sm:items-center bg-black/70 backdrop-blur-md p-4" onClick={onClose}>
@@ -2774,7 +3859,13 @@ function ReviewModal({
       >
         <div className="mx-auto mb-6 h-1.5 w-12 rounded-full bg-outlineVariant/30 sm:hidden" />
         <h3 className="text-3xl font-black text-center">{title}</h3>
-        <p className="mt-4 text-onSurfaceVariant font-medium text-center text-lg leading-relaxed">Add an optional remark for the intern to see.</p>
+        <p className="mt-4 text-onSurfaceVariant font-medium text-center text-lg leading-relaxed">
+          {showCreditMeter ? "Choose the credits to award, then add an optional remark." : "Add an optional remark for the intern to see."}
+        </p>
+
+        {showCreditMeter ? (
+          <CreditAwardMeter value={awardCredits} max={maxCredits} onChange={setAwardCredits} />
+        ) : null}
 
         <div className="mt-8">
           <TextField
@@ -2794,7 +3885,7 @@ function ReviewModal({
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(remarks)}
+            onClick={() => onConfirm(remarks, showCreditMeter ? awardCredits : undefined)}
             className={cn(
               "flex-1 rounded-[24px] py-5 font-black text-lg text-white transition active:scale-95 shadow-xl order-1 sm:order-2",
               isDestructive ? "bg-red-500 shadow-red-500/30" : "bg-primary shadow-primary/30"
@@ -2809,19 +3900,82 @@ function ReviewModal({
   );
 }
 
+function clampCreditAward(value: number, maxCredits: number) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(Math.max(Math.round(value), 1), maxCredits);
+}
+
+function CreditAwardMeter({ value, max, onChange }: { value: number; max: number; onChange: (value: number) => void }) {
+  const progress = max <= 1 ? 100 : ((value - 1) / (max - 1)) * 100;
+  const safeProgress = Math.min(Math.max(progress, 0), 100);
+  const rangeBackground = `linear-gradient(90deg, var(--primary) 0%, #28D5C4 ${safeProgress * 0.58}%, #B9F474 ${safeProgress}%, var(--surface-container-highest) ${safeProgress}%, var(--surface-container-highest) 100%)`;
+
+  return (
+    <div className="mt-8 overflow-hidden rounded-[28px] border border-primary/15 bg-primary/5 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-white shadow-[0_10px_24px_rgba(0,163,255,0.28)]">
+            <Zap size={20} fill="currentColor" />
+          </span>
+          <span>
+            <span className="block text-[10px] font-black uppercase tracking-widest text-primary/80">Credit Award</span>
+            <span className="block text-sm font-semibold text-onSurfaceVariant">Max {max} credits</span>
+          </span>
+        </div>
+        <div className="text-right">
+          <span className="block text-4xl font-black leading-none text-onSurface">{value}</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-onSurfaceVariant">credits</span>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <input
+          aria-label="Credits to award"
+          type="range"
+          min={1}
+          max={max}
+          step={1}
+          value={value}
+          onChange={(event) => onChange(clampCreditAward(Number(event.target.value), max))}
+          className="credit-award-range w-full"
+          style={{ background: rangeBackground }}
+        />
+        <div className="mt-4 flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-onSurfaceVariant/70">
+          <span>1</span>
+          <span className="flex items-center gap-1 text-primary"><Sparkles size={12} /> {Math.round(safeProgress)}%</span>
+          <span>{max}</span>
+        </div>
+      </div>
+
+      <label className="mt-5 flex items-center justify-between gap-4 rounded-2xl bg-surfaceContainerLowest/80 px-4 py-3 border border-outlineVariant/10">
+        <span className="text-xs font-black uppercase tracking-widest text-onSurfaceVariant">Exact credits</span>
+        <input
+          aria-label="Exact credits"
+          type="number"
+          min={1}
+          max={max}
+          value={value}
+          onChange={(event) => onChange(clampCreditAward(Number(event.target.value), max))}
+          className="w-24 bg-transparent text-right text-xl font-black text-primary outline-none"
+        />
+      </label>
+    </div>
+  );
+}
+
 function ReviewItem({ user, tx, adminName, hideUser = false }: { user: UserModel; tx: VaultTransaction; adminName: string; hideUser?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modalMode, setModalMode] = useState<"approve" | "reject" | null>(null);
 
-  async function handleConfirm(remarks: string) {
+  async function handleConfirm(remarks: string, awardCredits?: number) {
     const isApprove = modalMode === "approve";
     setModalMode(null);
     setBusy(true);
     setError(null);
     try {
-      if (isApprove) await approveTransaction(user, tx, remarks, adminName);
+      if (isApprove) await approveTransaction(user, tx, remarks, adminName, awardCredits);
       else await rejectTransaction(user, tx, remarks, adminName);
     } catch (err) {
       console.error("Review action failed:", err);
@@ -2859,6 +4013,26 @@ function ReviewItem({ user, tx, adminName, hideUser = false }: { user: UserModel
         </div>
       )}
 
+      {tx.proofUrls && tx.proofUrls.length > 0 && (
+        <div className="mt-5 space-y-2">
+          <span className="text-[10px] font-black uppercase tracking-widest text-onSurfaceVariant/60">Submitted Proof</span>
+          <div className="flex flex-wrap gap-2">
+            {tx.proofUrls.map((url, i) => (
+              <a
+                key={i}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 rounded-xl bg-surfaceContainerHigh px-3 py-2 text-xs font-bold text-primary hover:bg-surfaceContainerHighest transition-colors border border-outlineVariant/10"
+              >
+                <Download size={14} />
+                <span className="truncate max-w-[120px]">{tx.proofNames?.[i] || `File ${i + 1}`}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-5 grid grid-cols-2 gap-3">
         <button type="button" disabled={busy} onClick={() => setModalMode("reject")} className="h-12 rounded-full border border-red-500/10 bg-red-500/10 font-semibold text-red-500 disabled:opacity-50">Reject</button>
         <button type="button" disabled={busy} onClick={() => setModalMode("approve")} className="h-12 rounded-full bg-primary font-semibold text-white shadow-[0_4px_12px_rgba(0,93,167,0.3)] disabled:opacity-50">
@@ -2873,6 +4047,8 @@ function ReviewItem({ user, tx, adminName, hideUser = false }: { user: UserModel
         title={modalMode === "approve" ? "Approve Credits?" : "Reject Credits?"}
         actionLabel={modalMode === "approve" ? "Approve" : "Reject"}
         isDestructive={modalMode === "reject"}
+        requestedCredits={tx.amount}
+        showCreditMeter={modalMode === "approve"}
       />
     </GhostCard>
   );
@@ -2972,7 +4148,10 @@ function TaskForm({ initial, users, onDone }: { initial: TaskModel | null; users
         isCompleted: initial?.isCompleted ?? false,
         isBonusCompleted: initial?.isBonusCompleted ?? false,
         assignedUserEmails: assigned,
+        submittedByUserEmails: initial?.submittedByUserEmails ?? [],
+        submittedBonusByUserEmails: initial?.submittedBonusByUserEmails ?? [],
         completedByUserEmails: initial?.completedByUserEmails ?? [],
+        completedBonusByUserEmails: initial?.completedBonusByUserEmails ?? [],
         submissionDate: initial?.submissionDate ?? null,
       };
 

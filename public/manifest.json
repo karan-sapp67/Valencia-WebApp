@@ -1,7 +1,7 @@
 {
-  "name": "Stitch Intern Tracker",
-  "short_name": "Stitch",
-  "description": "Premium Performance Tracking for Interns",
+  "name": "Valencia Nutrition Intern App",
+  "short_name": "Valencia",
+  "description": "Performance tracking for Valencia Nutrition interns",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0D0E11",

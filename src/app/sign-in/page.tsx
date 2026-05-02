@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import { SignInScreen } from "@/components/ApkScreens";
 
 export default function Page() {
-  return <SignInScreen />;
+  return (
+    <Suspense>
+      <SignInScreen />
+    </Suspense>
+  );
 }

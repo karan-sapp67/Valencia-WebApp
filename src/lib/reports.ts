@@ -148,7 +148,7 @@ export function generateInternReportCSV(interns: UserModel[], tasks: TaskModel[]
   const url = URL.createObjectURL(blob);
 
   link.setAttribute("href", url);
-  link.setAttribute("download", `Stitch_Intern_Report_${new Date().toISOString().split('T')[0]}.csv`);
+  link.setAttribute("download", `Valencia_Nutrition_Intern_Report_${new Date().toISOString().split('T')[0]}.csv`);
   link.style.visibility = "hidden";
   document.body.appendChild(link);
   link.click();

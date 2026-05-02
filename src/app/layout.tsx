@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Manrope } from "next/font/google";
 import "./globals.css";
 import { BottomNavBar } from "@/components/BottomNavBar";
@@ -14,16 +14,30 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Stitch Intern Tracker",
-  description: "Performance tracking for interns",
+  title: "Valencia Nutrition Intern App",
+  description: "Performance tracking for Valencia Nutrition interns",
   manifest: "/manifest.json",
-  themeColor: "#0D0E11",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover",
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Stitch",
+    title: "Valencia Nutrition",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#0D0E11",
 };
 
 export default function RootLayout({
