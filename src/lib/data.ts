@@ -350,8 +350,8 @@ export function normalizeTransaction(raw: Record<string, any>): VaultTransaction
     id: stableId,
     title: title,
     amount: Number(raw.amount ?? 0),
-    requestedAmount: raw.requestedAmount != null ? Number(raw.requestedAmount) : undefined,
-    awardedAmount: raw.awardedAmount != null ? Number(raw.awardedAmount) : undefined,
+    requestedAmount: raw.requestedAmount != null ? Number(raw.requestedAmount) : null,
+    awardedAmount: raw.awardedAmount != null ? Number(raw.awardedAmount) : null,
     date: isoFromUnknown(date),
     status: raw.status ?? "approved",
     adminRemarks: raw.adminRemarks ?? null,
@@ -817,10 +817,10 @@ export async function requestCredits(user: UserModel, amount: number, title: str
     amount,
     date: new Date().toISOString(),
     status: "pending",
-    taskId,
-    isBonus,
-    proofUrls,
-    proofNames
+    taskId: taskId ?? null,
+    isBonus: !!isBonus,
+    proofUrls: proofUrls ?? [],
+    proofNames: proofNames ?? []
   };
 
   await updateDoc(doc(db, "users", user.email.toLowerCase()), {
@@ -890,8 +890,8 @@ export async function markTaskCompleted(user: UserModel, task: TaskModel, isBonu
     timestamp: now,
     taskId: task.id,
     isBonus: isBonus,
-    proofUrls,
-    proofNames
+    proofUrls: proofUrls ?? [],
+    proofNames: proofNames ?? []
   };
 
   batch.update(userRef, {
@@ -919,9 +919,17 @@ export async function withdrawSubmission(user: UserModel, task: TaskModel, isBon
   const batch = writeBatch(db);
 
   // 1. Remove user from task's submission list
+  const field = isBonus ? "submittedBonusByUserEmails" : "submittedByUserEmails";
   batch.update(taskRef, {
-    [isBonus ? "submittedBonusByUserEmails" : "submittedByUserEmails"]: arrayRemove(user.email)
+    [field]: arrayRemove(user.email)
   });
+
+  // Handle lowercase as well just in case
+  if (user.email.toLowerCase() !== user.email) {
+    batch.update(taskRef, {
+      [field]: arrayRemove(user.email.toLowerCase())
+    });
+  }
 
   // 2. Remove the submission date from user record
   batch.update(userRef, {
@@ -932,7 +940,11 @@ export async function withdrawSubmission(user: UserModel, task: TaskModel, isBon
   const updatedTransactions = user.transactions.filter(tx =>
     !(tx.taskId === task.id && tx.isBonus === isBonus && tx.status === "pending")
   );
-  batch.update(userRef, { transactions: updatedTransactions });
+
+  // CRITICAL FIX: Firestore does not accept 'undefined' values.
+  // normalizedTransactions often have undefined fields (requestedAmount, awardedAmount).
+  const cleanTransactions = JSON.parse(JSON.stringify(updatedTransactions));
+  batch.update(userRef, { transactions: cleanTransactions });
 
   await batch.commit();
 }

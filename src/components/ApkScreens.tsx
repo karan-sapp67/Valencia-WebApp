@@ -169,6 +169,34 @@ function AnimatedCounter({ value, duration = 1.2 }: { value: number; duration?: 
   return <>{display}</>;
 }
 
+/**
+ * Hook to handle "Back" button to close modals on mobile/web
+ */
+function useModalHistory(isOpen: boolean, onClose: () => void, modalId: string) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Push a new state when the modal opens
+    const state = { modalId };
+    window.history.pushState(state, "");
+
+    const handlePopState = (event: PopStateEvent) => {
+      // If the back button is pressed, close the modal
+      onClose();
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      // If the modal is closed via UI (not back button), remove the state we added
+      if (window.history.state?.modalId === modalId) {
+        window.history.back();
+      }
+    };
+  }, [isOpen, onClose, modalId]);
+}
+
 function ConfettiCelebration() {
   const colors = ["#00A3FF", "#B9F474", "#FFD700", "#FF6B6B", "#A78BFA", "#9FF1EA", "#FFB85C", "#FF8F8F"];
   const pieces = useMemo(
@@ -1117,6 +1145,8 @@ function TaskDetailsModal({
   const [selectedMainFiles, setSelectedMainFiles] = useState<File[]>([]);
   const [selectedBonusFiles, setSelectedBonusFiles] = useState<File[]>([]);
   const [activeView, setActiveView] = useState<"main" | "bonus">("main");
+
+  useModalHistory(isOpen, onClose, `task-${task.id}`);
 
   const mainDone = mainTaskCompletedForUser(task, user);
   const mainSubmitted = isSubmittedForUser(task, user) && !mainDone;
@@ -2732,6 +2762,9 @@ function ConfirmationModal({
   icon?: LucideIcon;
 }) {
   const [mounted, setMounted] = useState(false);
+
+  useModalHistory(isOpen, onClose, "confirmation");
+
   useEffect(() => {
     setMounted(true);
     if (isOpen) {
@@ -2978,6 +3011,8 @@ function ProfileSettingsModal({ isOpen, onClose, user }: { isOpen: boolean; onCl
   const [message, setMessage] = useState("");
   const [mounted, setMounted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useModalHistory(isOpen, onClose, "profile-settings");
 
   useEffect(() => {
     setMounted(true);
@@ -3822,6 +3857,8 @@ function ReviewModal({
   const [remarks, setRemarks] = useState("");
   const [awardCredits, setAwardCredits] = useState(maxCredits);
   const [mounted, setMounted] = useState(false);
+
+  useModalHistory(isOpen, onClose, "review");
 
   useEffect(() => {
     setMounted(true);
