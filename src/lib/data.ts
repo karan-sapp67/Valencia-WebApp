@@ -913,40 +913,47 @@ export async function markTaskCompleted(user: UserModel, task: TaskModel, isBonu
 }
 
 export async function withdrawSubmission(user: UserModel, task: TaskModel, isBonus = false) {
-  const userRef = doc(db, "users", user.email.toLowerCase());
-  const taskRef = doc(db, "tasks", task.id);
+  const email = user?.email;
+  const taskId = task?.id;
 
-  const batch = writeBatch(db);
-
-  // 1. Remove user from task's submission list
-  const field = isBonus ? "submittedBonusByUserEmails" : "submittedByUserEmails";
-  batch.update(taskRef, {
-    [field]: arrayRemove(user.email)
-  });
-
-  // Handle lowercase as well just in case
-  if (user.email.toLowerCase() !== user.email) {
-    batch.update(taskRef, {
-      [field]: arrayRemove(user.email.toLowerCase())
-    });
+  if (!email || !taskId) {
+    console.warn("[withdrawSubmission] Missing email or taskId", { email, taskId });
+    return;
   }
 
-  // 2. Remove the submission date from user record
-  batch.update(userRef, {
-    [isBonus ? `submittedBonusTaskDates.${task.id}` : `submittedTaskDates.${task.id}`]: deleteField()
-  });
+  const cleanEmail = email.toLowerCase();
+  const userRef = doc(db, "users", cleanEmail);
+  const taskRef = doc(db, "tasks", taskId);
+  const batch = writeBatch(db);
 
-  // 3. Remove the pending transaction
-  const updatedTransactions = user.transactions.filter(tx =>
-    !(tx.taskId === task.id && tx.isBonus === isBonus && tx.status === "pending")
+  // 1. Task Document: Remove user from submission lists
+  const taskField = isBonus ? "submittedBonusByUserEmails" : "submittedByUserEmails";
+  batch.update(taskRef, { [taskField]: arrayRemove(email) });
+  if (email !== cleanEmail) {
+    batch.update(taskRef, { [taskField]: arrayRemove(cleanEmail) });
+  }
+
+  // 2. User Document: Update transactions and remove submission date
+  const transactions = (user.transactions || []).filter(tx =>
+    !(tx.taskId === taskId && !!tx.isBonus === !!isBonus && tx.status === "pending")
   );
 
-  // CRITICAL FIX: Firestore does not accept 'undefined' values.
-  // normalizedTransactions often have undefined fields (requestedAmount, awardedAmount).
-  const cleanTransactions = JSON.parse(JSON.stringify(updatedTransactions));
-  batch.update(userRef, { transactions: cleanTransactions });
+  const dateCollection = isBonus ? "submittedBonusTaskDates" : "submittedTaskDates";
+  const updates: Record<string, any> = {
+    // Deep clean transactions to ensure no 'undefined' values are sent to Firestore
+    transactions: JSON.parse(JSON.stringify(transactions, (k, v) => v === undefined ? null : v)),
+    // Remove the specific task entry from the submission dates map
+    [`${dateCollection}.${taskId}`]: deleteField()
+  };
 
-  await batch.commit();
+  batch.update(userRef, updates);
+
+  try {
+    await batch.commit();
+  } catch (err: any) {
+    console.error("[withdrawSubmission] Firestore Error:", err);
+    throw err;
+  }
 }
 
 export async function addTask(task: TaskModel) {
