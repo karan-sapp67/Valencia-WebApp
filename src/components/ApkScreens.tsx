@@ -22,6 +22,7 @@ import {
   ClipboardList,
   Clock,
   Component,
+  Copy,
   Download,
   Edit3,
   Eye,
@@ -83,6 +84,7 @@ import {
   withdrawSubmission,
   parseDate,
   registerUser,
+  redeemValenciaCoupon,
   rejectTransaction,
   sendReset,
   toggleNotifications,
@@ -95,9 +97,10 @@ import {
   useNotifications,
   useTasks,
   useUsers,
+  VALENCIA_COUPON_COST,
 } from "@/lib/data";
 import { cn } from "@/lib/utils";
-import { AppNotification, TaskModel, UserModel, VaultTransaction } from "@/lib/types";
+import { AppNotification, TaskModel, UserModel, VaultTransaction, VoucherModel } from "@/lib/types";
 
 type AvatarPreset = {
   id: string;
@@ -2254,6 +2257,7 @@ export function VaultScreen() {
   const { userData, loading } = useProtectedUser();
   if (loading || !userData) return <LoadingScreen />;
   const txs = [...userData.transactions].reverse();
+  const vouchers = [...userData.myVouchers].reverse();
 
   return (
     <Screen>
@@ -2273,6 +2277,9 @@ export function VaultScreen() {
             <AnimatedCounter value={userData.credits} />
           </div>
         </motion.div>
+
+        <CreditRedemptionCard user={userData} />
+        <VoucherHistory vouchers={vouchers} />
         
         <motion.h2
           className="mt-10 text-2xl font-semibold"
@@ -2296,6 +2303,240 @@ export function VaultScreen() {
         </motion.div>
       </SafeArea>
     </Screen>
+  );
+}
+
+function CreditRedemptionCard({ user }: { user: UserModel }) {
+  const [redeeming, setRedeeming] = useState(false);
+  const [error, setError] = useState("");
+  const [revealedVoucher, setRevealedVoucher] = useState<VoucherModel | null>(null);
+  const [copiedCode, setCopiedCode] = useState("");
+  const copiedTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
+
+  const credits = Number(user.totalCredits ?? user.credits ?? 0);
+  const progress = Math.min(Math.max((credits / VALENCIA_COUPON_COST) * 100, 0), 100);
+  const creditsNeeded = Math.max(VALENCIA_COUPON_COST - credits, 0);
+  const canRedeem = credits >= VALENCIA_COUPON_COST;
+
+  const copyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(code);
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopiedCode(""), 1400);
+    } catch {
+      setError("Could not copy the coupon code.");
+    }
+  };
+
+  const handleRedeem = async () => {
+    if (!canRedeem || redeeming) return;
+    setRedeeming(true);
+    setError("");
+    setRevealedVoucher(null);
+    try {
+      const voucher = await redeemValenciaCoupon(user);
+      setRevealedVoucher(voucher);
+    } catch (err: any) {
+      setError(err?.message ?? "Coupon redemption failed. Please try again.");
+    } finally {
+      setRedeeming(false);
+    }
+  };
+
+  return (
+    <motion.section
+      className="mt-6 overflow-hidden rounded-[32px] border border-purple-400/20 bg-surfaceContainerLow p-5 shadow-[0_18px_40px_rgba(88,28,135,0.18)]"
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay: 0.12, ease: [0.2, 0, 0, 1] }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-300">Redemption</p>
+          <h2 className="mt-2 text-2xl font-black leading-tight">Valencia Coupon</h2>
+        </div>
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-purple-500/15 text-purple-300">
+          <Gem size={24} />
+        </span>
+      </div>
+
+      <div className="mt-6 flex items-end justify-between gap-4">
+        <span>
+          <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-onSurfaceVariant">Balance</span>
+          <span className="mt-1 block text-3xl font-black leading-none">{credits.toLocaleString()}</span>
+        </span>
+        <span className="text-right">
+          <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-onSurfaceVariant">Goal</span>
+          <span className="mt-1 block text-sm font-black text-purple-300">{VALENCIA_COUPON_COST.toLocaleString()} credits</span>
+        </span>
+      </div>
+
+      <div className="mt-4 h-3 overflow-hidden rounded-full bg-surfaceContainerHighest">
+        <motion.div
+          className="h-full rounded-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-500"
+          initial={{ width: 0 }}
+          animate={{ width: `${progress}%` }}
+          transition={{ duration: 0.8, ease: [0.2, 0, 0, 1] }}
+        />
+      </div>
+      <div className="mt-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.14em] text-onSurfaceVariant">
+        <span>{Math.round(progress)}%</span>
+        <span>{creditsNeeded > 0 ? `${creditsNeeded.toLocaleString()} left` : "Unlocked"}</span>
+      </div>
+
+      <div className="mt-6">
+        <AnimatePresence mode="wait">
+          {revealedVoucher ? (
+            <motion.div
+              key="coupon-reveal"
+              initial={{ opacity: 0, y: 16, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -12, scale: 0.96 }}
+              transition={{ duration: 0.35, ease: [0.2, 0, 0, 1] }}
+              className="rounded-[26px] border border-green-400/20 bg-green-500/10 p-4"
+            >
+              <div className="flex items-center gap-2 text-green-400">
+                <CheckCircle2 size={18} />
+                <span className="text-xs font-black uppercase tracking-[0.18em]">Success</span>
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <code className="min-w-0 flex-1 truncate rounded-2xl bg-surfaceContainerLowest px-4 py-3 text-base font-black text-onSurface">
+                  {revealedVoucher.code}
+                </code>
+                <button
+                  type="button"
+                  aria-label="Copy coupon code"
+                  onClick={() => copyCode(revealedVoucher.code)}
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-green-500 text-white active:scale-95 transition"
+                >
+                  {copiedCode === revealedVoucher.code ? <Check size={20} /> : <Copy size={20} />}
+                </button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.button
+              key="redeem-button"
+              type="button"
+              disabled={!canRedeem || redeeming}
+              onClick={handleRedeem}
+              whileTap={canRedeem && !redeeming ? { scale: 0.98 } : undefined}
+              animate={canRedeem && !redeeming ? { scale: [1, 1.012, 1] } : undefined}
+              transition={canRedeem && !redeeming ? { repeat: Infinity, duration: 2.4, ease: "easeInOut" } : undefined}
+              className={cn(
+                "flex h-14 w-full items-center justify-center gap-2 rounded-[24px] px-5 text-sm font-black transition",
+                canRedeem
+                  ? "bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-500 text-white shadow-[0_14px_28px_rgba(168,85,247,0.28)]"
+                  : "bg-surfaceContainerHighest text-onSurfaceVariant grayscale",
+                (!canRedeem || redeeming) && "cursor-not-allowed opacity-70"
+              )}
+            >
+              {redeeming ? (
+                <>
+                  <RefreshCw size={18} className="animate-spin" />
+                  Redeeming...
+                </>
+              ) : canRedeem ? (
+                "Convert 2,000 credits"
+              ) : (
+                `Earn ${creditsNeeded.toLocaleString()} more to unlock.`
+              )}
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <AnimatePresence>
+        {error ? (
+          <motion.p
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="mt-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-400"
+          >
+            {error}
+          </motion.p>
+        ) : null}
+      </AnimatePresence>
+    </motion.section>
+  );
+}
+
+function VoucherHistory({ vouchers }: { vouchers: VoucherModel[] }) {
+  const [copiedCode, setCopiedCode] = useState("");
+  const copiedTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
+
+  const copyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(code);
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopiedCode(""), 1400);
+    } catch {
+      setCopiedCode("");
+    }
+  };
+
+  return (
+    <motion.section
+      className="mt-8"
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.18, ease: [0.2, 0, 0, 1] }}
+    >
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-black">My Coupons</h2>
+        <span className="rounded-full bg-purple-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-purple-300">
+          {vouchers.length}
+        </span>
+      </div>
+
+      <div className="mt-3 space-y-3">
+        {vouchers.length === 0 ? (
+          <p className="rounded-[24px] border border-outlineVariant/10 bg-surfaceContainerLow px-5 py-6 text-center text-sm font-semibold text-onSurfaceVariant">
+            No coupons redeemed yet.
+          </p>
+        ) : (
+          vouchers.map((voucher) => (
+            <motion.div
+              key={`${voucher.code}-${voucher.date}`}
+              variants={staggerItem}
+              className="flex items-center gap-3 rounded-[24px] border border-outlineVariant/10 bg-surfaceContainerLow p-4"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-300">
+                <Key size={18} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-black">{voucher.code}</span>
+                <span className="mt-0.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-onSurfaceVariant">
+                  {voucher.type} / {formatShortDate(voucher.date)}
+                </span>
+              </span>
+              <button
+                type="button"
+                aria-label={`Copy coupon ${voucher.code}`}
+                onClick={() => copyCode(voucher.code)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-surfaceContainerHighest text-onSurface active:scale-95 transition"
+              >
+                {copiedCode === voucher.code ? <Check size={18} className="text-green-400" /> : <Copy size={18} />}
+              </button>
+            </motion.div>
+          ))
+        )}
+      </div>
+    </motion.section>
   );
 }
 

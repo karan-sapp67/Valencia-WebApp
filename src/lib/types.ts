@@ -20,12 +20,20 @@ export interface VaultTransaction {
   proofNames?: string[];
 }
 
+export interface VoucherModel {
+  code: string;
+  date: string;
+  type: string;
+}
+
 export interface UserModel {
   email: string;
   password?: string;
   fullName: string;
   role: 'Intern' | 'Admin' | string;
   credits: number;
+  totalCredits: number;
+  myVouchers: VoucherModel[];
   profilePictureUrl?: string;
   transactions: VaultTransaction[];
   submittedTaskDates: Record<string, string>;

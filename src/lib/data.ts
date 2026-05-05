@@ -30,13 +30,14 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   setDoc,
   updateDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
 import { auth, db, messaging, storage } from "@/lib/firebase";
-import { AppNotification, TaskModel, UserModel, VaultTransaction } from "@/lib/types";
+import { AppNotification, TaskModel, UserModel, VaultTransaction, VoucherModel } from "@/lib/types";
 
 type LoadingState<T> = {
   data: T;
@@ -50,6 +51,8 @@ const emptyUser: UserModel = {
   fullName: "Intern",
   role: "Intern",
   credits: 0,
+  totalCredits: 0,
+  myVouchers: [],
   transactions: [],
   submittedTaskDates: {},
   submittedBonusTaskDates: {},
@@ -57,6 +60,19 @@ const emptyUser: UserModel = {
   completedBonusTaskDates: {},
   notificationsEnabled: true,
 };
+
+export const VALENCIA_COUPON_COST = 2000;
+const VALENCIA_COUPON_REWARD_ID = "valencia_coupon";
+const VALENCIA_COUPON_TYPE = "Valencia Coupon";
+
+function numberOrZero(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function creditBalanceFromRaw(data: Record<string, any>): number {
+  return Math.max(numberOrZero(data.totalCredits), numberOrZero(data.credits));
+}
 
 function isoFromUnknown(value: unknown): string {
   if (!value) return new Date().toISOString();
@@ -369,10 +385,19 @@ export function normalizeTransaction(raw: Record<string, any>): VaultTransaction
   };
 }
 
+export function normalizeVoucher(raw: Record<string, any>): VoucherModel {
+  return {
+    code: String(raw.code ?? ""),
+    date: isoFromUnknown(raw.date),
+    type: String(raw.type ?? VALENCIA_COUPON_TYPE),
+  };
+}
+
 export function normalizeUser(raw?: Record<string, any>, id?: string): UserModel {
   const data = raw ?? {};
   // Use the stored email field for display if it exists, otherwise fallback to document ID
   const displayEmail = (typeof data.email === 'string' && data.email.length > 0) ? data.email : (id ?? "");
+  const credits = creditBalanceFromRaw(data);
 
   return {
     ...emptyUser,
@@ -380,7 +405,11 @@ export function normalizeUser(raw?: Record<string, any>, id?: string): UserModel
     password: data.password ?? "",
     fullName: data.fullName ?? data.name ?? "Intern",
     role: data.role ?? "Intern",
-    credits: Number(data.credits ?? 0),
+    credits,
+    totalCredits: credits,
+    myVouchers: Array.isArray(data.myVouchers)
+      ? data.myVouchers.map((voucher: Record<string, any>) => normalizeVoucher(voucher)).filter((voucher) => voucher.code)
+      : [],
     profilePictureUrl: data.profilePictureUrl ?? null,
     transactions: Array.isArray(data.transactions)
       ? data.transactions.map((tx: Record<string, any>) => normalizeTransaction(tx))
@@ -620,6 +649,8 @@ export async function registerUser(fullName: string, email: string, password: st
     fullName,
     role: "Intern",
     credits: 0,
+    totalCredits: 0,
+    myVouchers: [],
     profilePictureUrl: null,
     transactions: [],
     submittedTaskDates: {},
@@ -763,6 +794,67 @@ export async function updateFullName(email: string, fullName: string) {
 
 export async function toggleNotifications(email: string, enabled: boolean) {
   await updateDoc(doc(db, "users", email.toLowerCase()), { notificationsEnabled: enabled });
+}
+
+export async function redeemValenciaCoupon(user: UserModel): Promise<VoucherModel> {
+  if (!user?.email) throw new Error("You need to sign in before redeeming a coupon.");
+
+  const cleanEmail = user.email.trim().toLowerCase();
+  const userRef = doc(db, "users", cleanEmail);
+  const rewardRef = doc(db, "rewards", VALENCIA_COUPON_REWARD_ID);
+
+  return runTransaction(db, async (transaction) => {
+    const userSnap = await transaction.get(userRef);
+    const rewardSnap = await transaction.get(rewardRef);
+
+    if (!userSnap.exists()) {
+      throw new Error("Your profile could not be found. Please sign in again.");
+    }
+
+    if (!rewardSnap.exists()) {
+      throw new Error("Coupon redemption is not configured yet.");
+    }
+
+    const userData = userSnap.data();
+    const rewardData = rewardSnap.data();
+    const cost = numberOrZero(rewardData.cost) || VALENCIA_COUPON_COST;
+    const currentCredits = creditBalanceFromRaw(userData);
+    const availableCodes = Array.isArray(rewardData.codes)
+      ? rewardData.codes.filter((code): code is string => typeof code === "string" && code.trim().length > 0)
+      : [];
+
+    if (currentCredits < cost) {
+      throw new Error(`Earn ${cost - currentCredits} more to unlock.`);
+    }
+
+    if (availableCodes.length === 0) {
+      throw new Error("All Valencia coupons have already been redeemed.");
+    }
+
+    const [code, ...remainingCodes] = availableCodes;
+    const date = new Date().toISOString();
+    const voucher: VoucherModel = {
+      code,
+      date,
+      type: VALENCIA_COUPON_TYPE,
+    };
+
+    const existingVouchers = Array.isArray(userData.myVouchers)
+      ? userData.myVouchers.map((item: Record<string, any>) => normalizeVoucher(item)).filter((item) => item.code)
+      : [];
+
+    transaction.update(rewardRef, {
+      codes: remainingCodes,
+    });
+
+    transaction.update(userRef, {
+      totalCredits: currentCredits - cost,
+      credits: currentCredits - cost,
+      myVouchers: [...existingVouchers, voucher],
+    });
+
+    return voucher;
+  });
 }
 
 export async function uploadProof(email: string, files: File[], onProgress?: (progress: number) => void) {
@@ -1022,6 +1114,7 @@ export async function approveTransaction(user: UserModel, tx: VaultTransaction, 
   const updates: Record<string, any> = {
     transactions: cleanTransactions,
     credits: increment(approvedAmount),
+    totalCredits: increment(approvedAmount),
   };
 
   // If this transaction was linked to a task, mark the task as COMPLETED and remove from PENDING

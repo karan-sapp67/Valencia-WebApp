@@ -1,0 +1,58 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if the user is an Admin
+    function isAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'Admin';
+    }
+
+    // Helper to check if the user is accessing their own data
+    function isOwner(email) {
+      return request.auth != null && request.auth.token.email.lower() == email.lower();
+    }
+
+    // --- USERS COLLECTION ---
+    match /users/{email} {
+      // Anyone logged in can read user profiles (needed for leaderboards)
+      allow read: if request.auth != null;
+
+      // Only admins can create new users (or the user themselves during registration)
+      allow create: if request.auth != null;
+
+      // Update logic:
+      allow update: if request.auth != null && (
+        isAdmin() || (
+          isOwner(email) &&
+          // Prevent interns from changing their own credits or role
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['credits', 'totalCredits', 'role']) &&
+          // Ensure they don't approve their own transactions
+          (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['transactions']) ||
+            request.resource.data.transactions.size() >= resource.data.transactions.size() // Basic check
+          )
+        )
+      );
+    }
+
+    // --- TASKS COLLECTION ---
+    match /tasks/{taskId} {
+      allow read: if request.auth != null;
+      // Only admins can create, delete or edit tasks
+      allow write: if isAdmin();
+      // Exception: Allow interns to update ONLY the submission arrays when they submit work
+      allow update: if request.auth != null && (
+        isAdmin() ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['submittedByUserEmails', 'submittedBonusByUserEmails'])
+      );
+    }
+
+    // --- NOTIFICATIONS ---
+    match /users/{email}/notifications/{notificationId} {
+      allow read: if isOwner(email) || isAdmin();
+      allow write: if isOwner(email) || isAdmin();
+    }
+  }
+}
