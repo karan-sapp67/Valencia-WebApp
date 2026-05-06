@@ -759,30 +759,6 @@ import { getDownloadURL, ref, uploadBytes, uploadBytesResumable } from "firebase
 
 // ... existing code ...
 
-export async function uploadProfilePicture(email: string, file: File) {
-  try {
-    const currentUserEmail = auth.currentUser?.email;
-    console.log("[uploadProfilePicture] Current Auth Email:", currentUserEmail);
-    console.log("[uploadProfilePicture] Target User Email:", email);
-
-    if (currentUserEmail !== email) {
-      console.warn("[uploadProfilePicture] Warning: Email mismatch might cause Permission Denied.");
-    }
-
-    const storageRef = ref(storage, `profiles/${email}/${Date.now()}_${file.name}`);
-    console.log("[uploadProfilePicture] Starting upload to:", storageRef.fullPath);
-
-    const snapshot = await uploadBytes(storageRef, file);
-    console.log("[uploadProfilePicture] Upload successful.");
-
-    const downloadURL = await getDownloadURL(snapshot.ref);
-    await updateDoc(doc(db, "users", email.toLowerCase()), { profilePictureUrl: downloadURL });
-    return downloadURL;
-  } catch (error: any) {
-    console.error("[uploadProfilePicture] Firebase Storage Error:", error.code, error.message);
-    throw error;
-  }
-}
 
 export async function updateAvatar(email: string, avatarId: string) {
   await updateDoc(doc(db, "users", email.toLowerCase()), { profilePictureUrl: avatarId });

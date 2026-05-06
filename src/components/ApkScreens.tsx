@@ -91,7 +91,6 @@ import {
   updateAvatar,
   updateFullName,
   updateTask,
-  uploadProfilePicture,
   uploadProof,
   useCurrentUser,
   useNotifications,
@@ -580,14 +579,6 @@ function ProfileAvatar({
   borderWidth?: number;
   backgroundColor?: string;
 }) {
-  if (avatarId && /^https?:\/\//.test(avatarId)) {
-    return (
-      <span className="inline-flex rounded-full overflow-hidden" style={{ padding: borderWidth, border: borderWidth ? `${borderWidth}px solid ${borderColor}` : undefined }}>
-        <img src={avatarId} alt={name} style={{ width: size, height: size }} className="rounded-full object-cover" />
-      </span>
-    );
-  }
-
   const preset = resolvePreset(avatarId, name);
   const id = `grad-${preset.id.replace(/[:]/g, "-")}-${size}`;
   const accessory = (() => {
@@ -3248,10 +3239,8 @@ function ProfileSettingsModal({ isOpen, onClose, user }: { isOpen: boolean; onCl
   const [name, setName] = useState(user.fullName);
   const [avatar, setAvatar] = useState(user.profilePictureUrl ?? "");
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   const [mounted, setMounted] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useModalHistory(isOpen, onClose, "profile-settings");
 
@@ -3269,30 +3258,6 @@ function ProfileSettingsModal({ isOpen, onClose, user }: { isOpen: boolean; onCl
       document.body.style.touchAction = "unset";
     };
   }, [isOpen]);
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 2 * 1024 * 1024) {
-      setMessage("Error: Image must be under 2MB");
-      return;
-    }
-
-    setUploading(true);
-    setMessage("");
-    try {
-      const url = await uploadProfilePicture(user.email, file);
-      setAvatar(url);
-      setMessage("Success: Photo updated!");
-    } catch (err: any) {
-      console.error("Upload failed:", err);
-      const errorMsg = err.code ? `Upload Error: ${err.code}` : "Error: Failed to upload image.";
-      setMessage(errorMsg);
-    } finally {
-      setUploading(false);
-    }
-  }
 
   async function handleSave() {
     setLoading(true);
@@ -3344,35 +3309,14 @@ function ProfileSettingsModal({ isOpen, onClose, user }: { isOpen: boolean; onCl
         </div>
 
         <div className="space-y-8 overflow-y-auto pr-1 custom-scrollbar flex-1 pb-4">
-          {/* Avatar Edit Section */}
+          {/* Avatar Display Section */}
           <div className="flex flex-col items-center gap-4">
-            <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-              <div className="relative h-32 w-32 rounded-full overflow-hidden ring-4 ring-primary/20 transition-transform group-active:scale-95 shadow-2xl">
-                <ProfileAvatar name={name} avatarId={avatar} size={128} />
-                <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Edit3 size={24} className="text-white mb-1" />
-                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Change</span>
-                </div>
-                {uploading && (
-                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                    <RefreshCw size={32} className="text-white animate-spin" />
-                  </div>
-                )}
-              </div>
-              <div className="absolute -bottom-1 -right-1 h-10 w-10 rounded-full bg-primary flex items-center justify-center text-white border-4 border-surfaceContainerLow shadow-lg group-hover:scale-110 transition-transform">
-                <Plus size={20} strokeWidth={3} />
-              </div>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept="image/*"
-                className="hidden"
-              />
+            <div className="relative h-32 w-32 rounded-full overflow-hidden ring-4 ring-primary/20 transition-transform shadow-2xl">
+              <ProfileAvatar name={name} avatarId={avatar} size={128} />
             </div>
             <div className="text-center">
-              <p className="text-xs font-bold text-onSurfaceVariant uppercase tracking-[0.2em]">Profile Picture</p>
-              <p className="text-[10px] text-onSurfaceVariant/60 mt-1">Tap to upload a custom photo</p>
+              <p className="text-xs font-bold text-onSurfaceVariant uppercase tracking-[0.2em]">Profile Avatar</p>
+              <p className="text-[10px] text-onSurfaceVariant/60 mt-1">Select a preset below to change</p>
             </div>
           </div>
 
@@ -3445,7 +3389,7 @@ function ProfileSettingsModal({ isOpen, onClose, user }: { isOpen: boolean; onCl
         <div className="mt-8 flex flex-col gap-3 shrink-0">
           <button
             onClick={handleSave}
-            disabled={loading || uploading}
+            disabled={loading}
             className="w-full rounded-[24px] bg-primary py-5 font-black text-sm text-white transition active:scale-95 flex items-center justify-center gap-3 shadow-[0_12px_24px_rgba(0,93,167,0.3)] disabled:opacity-50 disabled:grayscale"
           >
             {loading ? <RefreshCw className="animate-spin" size={20} /> : <Save size={20} />}
