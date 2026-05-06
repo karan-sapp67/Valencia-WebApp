@@ -501,24 +501,37 @@ export function useCurrentUser() {
 
     const tryFetchUser = async () => {
       try {
-        const usersSnap = await getDocs(collection(db, "users"));
+        const cleanId = userEmail.toLowerCase();
+        const docRef = doc(db, "users", cleanId);
+        const snap = await getDoc(docRef);
+
         if (!active) return;
 
-        // Match case-insensitively first to find the canonical document ID
-        const matched = usersSnap.docs.find(d =>
-          d.id.toLowerCase() === userEmail.toLowerCase() || 
-          (typeof d.data().email === 'string' && d.data().email.toLowerCase() === userEmail.toLowerCase())
-        );
+        let matchedSnap = snap.exists() ? snap : null;
 
-        if (!matched) {
-          console.warn("[useCurrentUser] No match found in Firestore for:", userEmail);
-          await signOut(auth);
-          if (typeof window !== "undefined") sessionStorage.removeItem("auth_email");
-          if (active) setState({ data: null, loading: false });
-          return;
+        // Fallback: search by email field if doc ID didn't match (for older data)
+        if (!matchedSnap) {
+          const q = query(collection(db, "users"), where("email", "==", userEmail));
+          const querySnap = await getDocs(q);
+          if (!querySnap.empty) {
+            matchedSnap = querySnap.docs[0];
+          }
         }
 
-        const exactId = matched.id;
+        if (!matchedSnap) {
+          console.warn("[useCurrentUser] No match found yet for:", userEmail);
+          const timeoutId = setTimeout(async () => {
+            if (active) {
+              console.warn("[useCurrentUser] Still no match after timeout. Signing out.");
+              await signOut(auth);
+              if (typeof window !== "undefined") sessionStorage.removeItem("auth_email");
+              setState({ data: null, loading: false });
+            }
+          }, 3000);
+          return () => clearTimeout(timeoutId);
+        }
+
+        const exactId = matchedSnap.id;
         if (exactId !== sessionEmail && typeof window !== "undefined" && active) {
           sessionStorage.setItem("auth_email", exactId);
         }
@@ -570,14 +583,23 @@ export function useUsers() {
   const [state, setState] = useState<LoadingState<UserModel[]>>({ data: [], loading: true });
 
   useEffect(() => {
-    return onSnapshot(
+    let active = true;
+    const unsub = onSnapshot(
       collection(db, "users"),
       (snapshot) => {
+        if (!active) return;
         const users = snapshot.docs.map((snap) => normalizeUser(snap.data(), snap.id));
         setState({ data: users, loading: false });
       },
-      (error) => setState({ data: [], loading: false, error: error.message }),
+      (error) => {
+        if (!active) return;
+        setState({ data: [], loading: false, error: error.message });
+      },
     );
+    return () => {
+      active = false;
+      unsub();
+    };
   }, []);
 
   return state;
@@ -587,16 +609,25 @@ export function useTasks() {
   const [state, setState] = useState<LoadingState<TaskModel[]>>({ data: [], loading: true });
 
   useEffect(() => {
-    return onSnapshot(
+    let active = true;
+    const unsub = onSnapshot(
       collection(db, "tasks"),
       (snapshot) => {
+        if (!active) return;
         const tasks = snapshot.docs
           .map((snap) => normalizeTask(snap.data(), snap.id))
           .sort((a, b) => parseDate(a.dueDate).getTime() - parseDate(b.dueDate).getTime());
         setState({ data: tasks, loading: false });
       },
-      (error) => setState({ data: [], loading: false, error: error.message }),
+      (error) => {
+        if (!active) return;
+        setState({ data: [], loading: false, error: error.message });
+      },
     );
+    return () => {
+      active = false;
+      unsub();
+    };
   }, []);
 
   return state;
@@ -638,7 +669,7 @@ export function useInterns() {
   );
 }
 
-export async function registerUser(fullName: string, email: string, password: string) {
+export async function registerUser(fullName: string, email: string, password: string, role: "Intern" | "Admin" = "Intern") {
   const originalEmail = email.trim();
   const cleanEmail = originalEmail.toLowerCase();
 
@@ -647,7 +678,7 @@ export async function registerUser(fullName: string, email: string, password: st
     email: originalEmail, // Store exact casing provided by user
     password,
     fullName,
-    role: "Intern",
+    role,
     credits: 0,
     totalCredits: 0,
     myVouchers: [],
@@ -674,15 +705,24 @@ export async function loginUser(email: string, password: string) {
   const user = userCredential.user;
 
   if (user) {
-    const usersSnap = await getDocs(collection(db, "users"));
-    const matched = usersSnap.docs.find(d => 
-      d.id.toLowerCase() === inputEmail.toLowerCase() || 
-      (typeof d.data().email === 'string' && d.data().email.toLowerCase() === inputEmail.toLowerCase())
-    );
+    // 1. Try direct lookup by lowercase email (Doc ID)
+    const cleanId = inputEmail.toLowerCase();
+    const userDoc = await getDoc(doc(db, "users", cleanId));
 
-    if (matched) {
+    if (userDoc.exists()) {
       if (typeof window !== "undefined") {
-        sessionStorage.setItem("auth_email", matched.id);
+        sessionStorage.setItem("auth_email", userDoc.id);
+      }
+      return;
+    }
+
+    // 2. Fallback: Query by email field if direct lookup failed
+    const q = query(collection(db, "users"), where("email", "==", inputEmail));
+    const querySnap = await getDocs(q);
+
+    if (!querySnap.empty) {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("auth_email", querySnap.docs[0].id);
       }
     } else {
       await signOut(auth);
@@ -691,10 +731,12 @@ export async function loginUser(email: string, password: string) {
   }
 }
 
-export async function loginWithGoogle() {
+export async function loginWithGoogle(requestedRole: "Intern" | "Admin" = "Intern", adminSecret?: string) {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  sessionStorage.removeItem("auth_email"); // Google handles its own casing
+  sessionStorage.removeItem("auth_email");
+
+  const ADMIN_CREATION_PASSWORD = "VALENCIA_ADMIN_ACCESS";
 
   try {
     const result = await signInWithPopup(auth, provider);
@@ -702,21 +744,30 @@ export async function loginWithGoogle() {
 
     if (user && user.email) {
       const cleanEmail = user.email.toLowerCase();
-      // Check if user exists in Firestore
-      const userDoc = await getDoc(doc(db, "users", cleanEmail));
+      const userRef = doc(db, "users", cleanEmail);
+      const userDoc = await getDoc(userRef);
+
+      const isSecretCorrect = adminSecret === ADMIN_CREATION_PASSWORD;
 
       if (!userDoc.exists()) {
-        console.log("[Google Login] First time login for:", user.email, "Auto-creating Admin profile.");
+        let finalRole: "Intern" | "Admin" = "Intern";
+        if (requestedRole === "Admin" && isSecretCorrect) {
+          finalRole = "Admin";
+        }
 
-        // AUTO-CREATE ADMIN PROFILE for you since this is a new project
-        // You can remove this 'Admin' logic later once your cohort is set up
-        await setDoc(doc(db, "users", cleanEmail), {
+        await setDoc(userRef, {
           ...emptyUser,
           email: user.email,
-          fullName: user.displayName || "Admin",
-          role: "Admin", // Automatically making you an Admin on first login
+          fullName: user.displayName || (finalRole === "Admin" ? "Admin" : "Intern"),
+          role: finalRole,
           credits: 0,
+          totalCredits: 0,
         });
+      } else if (requestedRole === "Admin" && isSecretCorrect) {
+        // Upgrade check: Only update if not already Admin
+        if (userDoc.data()?.role !== "Admin") {
+          await updateDoc(userRef, { role: "Admin" });
+        }
       }
 
       sessionStorage.setItem("auth_email", cleanEmail);
@@ -724,6 +775,12 @@ export async function loginWithGoogle() {
     return result;
   } catch (error: any) {
     console.error("Google Login Error:", error);
+    if (error.code === 'auth/popup-closed-by-user') {
+      throw new Error("The sign-in popup was closed before finishing.");
+    }
+    if (error.code === 'auth/cancelled-popup-request') {
+      throw new Error("Sign-in process cancelled.");
+    }
     throw error;
   }
 }

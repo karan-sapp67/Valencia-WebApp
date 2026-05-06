@@ -148,28 +148,36 @@ const staggerItem = {
 const cardHover = { scale: 1.015, transition: { duration: 0.2 } };
 const cardTap = { scale: 0.98, transition: { duration: 0.1 } };
 
-function AnimatedCounter({ value, duration = 1.2 }: { value: number; duration?: number }) {
-  const [display, setDisplay] = useState(0);
-  const ref = useRef(0);
+const AnimatedCounter = React.memo(function AnimatedCounter({ value, duration = 0.8 }: { value: number; duration?: number }) {
+  const [display, setDisplay] = useState(value);
+  const prevValue = useRef(value);
+
   useEffect(() => {
-    const start = ref.current;
-    const diff = value - start;
-    if (diff === 0) return;
-    const startTime = performance.now();
-    const ms = duration * 1000;
-    function tick(now: number) {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / ms, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const current = Math.round(start + diff * eased);
-      setDisplay(current);
-      if (progress < 1) requestAnimationFrame(tick);
-      else ref.current = value;
-    }
-    requestAnimationFrame(tick);
+    if (prevValue.current === value) return;
+
+    let startTimestamp: number | null = null;
+    const startValue = prevValue.current;
+    const diff = value - startValue;
+
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / (duration * 1000), 1);
+      const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+
+      setDisplay(Math.floor(startValue + diff * eased));
+
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      } else {
+        prevValue.current = value;
+      }
+    };
+
+    window.requestAnimationFrame(step);
   }, [value, duration]);
+
   return <>{display}</>;
-}
+});
 
 /**
  * Hook to handle "Back" button to close modals on mobile/web
@@ -302,9 +310,9 @@ function Screen({ children, className }: { children: React.ReactNode; className?
 function PullToRefresh({ children, onRefresh }: { children: React.ReactNode; onRefresh: () => Promise<void> }) {
   const [refreshing, setRefreshing] = useState(false);
   const pullY = useMotionValue(0);
-  const springY = useSpring(pullY, { damping: 25, stiffness: 300 });
+  const springY = useSpring(pullY, { damping: 30, stiffness: 200 });
 
-  const threshold = 90;
+  const threshold = 80;
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -326,12 +334,11 @@ function PullToRefresh({ children, onRefresh }: { children: React.ReactNode; onR
       const y = e.touches[0].pageY;
       const diff = y - startY;
 
-      if (diff > 0 && window.scrollY <= 0) {
-        // Logarithmic resistance for a more natural feel
-        const d = Math.min(Math.pow(diff, 0.8) * 2.5, 120);
+      if (diff > 5 && window.scrollY <= 0) {
+        const d = Math.min(diff * 0.4, 100);
         pullY.set(d);
-        if (e.cancelable && d > 5) e.preventDefault();
-      } else if (diff < 0) {
+        if (e.cancelable) e.preventDefault();
+      } else {
         isPulling = false;
         pullY.set(0);
       }
@@ -400,25 +407,39 @@ function SafeArea({ children, className, bottomNav = false }: { children: React.
   return <div className={cn("apk-safe pb-40", bottomNav && "pb-[180px]", className)}>{children}</div>;
 }
 
-function GhostCard({ children, className, onClick }: { children: React.ReactNode; className?: string; onClick?: () => void }) {
+const GhostCard = React.memo(function GhostCard({
+  children,
+  className,
+  onClick,
+  type = "div"
+}: {
+  children: React.ReactNode;
+  className?: string;
+  onClick?: () => void;
+  type?: "div" | "button"
+}) {
+  const Component = type === "button" ? motion.button : motion.div;
+
   return (
-    <motion.div
+    <Component
       onClick={onClick}
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.2, 0, 0, 1] }}
+      {...(type === "button" ? { type: "button" } : {})}
+      variants={staggerItem}
+      initial="hidden"
+      animate="visible"
       whileHover={onClick ? cardHover : undefined}
       whileTap={onClick ? cardTap : undefined}
       className={cn(
-        "apk-ghost rounded-[32px] border-outlineVariant/10 card-hover-lift",
+        "apk-ghost rounded-[32px] border border-outlineVariant/10 bg-surfaceContainerLow text-left transition-all",
         onClick && "cursor-pointer",
-        className,
+        className
       )}
     >
       {children}
-    </motion.div>
+    </Component>
   );
-}
+});
+
 
 function BackHeader({ title, center = false, onClick }: { title?: string; center?: boolean; onClick?: () => void }) {
   const router = useRouter();
@@ -483,7 +504,7 @@ function TextField({
   multiline,
 }: {
   label: string;
-  hint: string;
+  hint?: string;
   icon?: LucideIcon;
   type?: string;
   value: string;
@@ -564,7 +585,7 @@ function FormError({ message }: { message: string }) {
   );
 }
 
-function ProfileAvatar({
+const ProfileAvatar = React.memo(function ProfileAvatar({
   name,
   avatarId,
   size = 48,
@@ -579,9 +600,10 @@ function ProfileAvatar({
   borderWidth?: number;
   backgroundColor?: string;
 }) {
-  const preset = resolvePreset(avatarId, name);
-  const id = `grad-${preset.id.replace(/[:]/g, "-")}-${size}`;
-  const accessory = (() => {
+  const preset = useMemo(() => resolvePreset(avatarId, name), [avatarId, name]);
+  const id = useMemo(() => `grad-${preset.id.replace(/[:]/g, "-")}-${size}`, [preset.id, size]);
+
+  const accessory = useMemo(() => {
     if (preset.accessory === "glasses") {
       return (
         <>
@@ -605,15 +627,17 @@ function ProfileAvatar({
     }
     if (preset.accessory === "bow") return <path d="M28 28c-7-5-10 8-4 10 5-1 8-4 12-8 4 4 7 7 12 8 6-2 3-15-4-10-3 1-5 3-8 5-3-2-5-4-8-5z" fill={preset.accent} />;
     return null;
-  })();
+  }, [preset]);
 
   return (
     <span
-      className="inline-flex rounded-full"
+      className="inline-flex rounded-full shrink-0"
       style={{
         padding: borderWidth,
         border: borderWidth ? `${borderWidth}px solid ${borderColor ?? "rgba(0,93,167,0.2)"}` : undefined,
         background: borderWidth ? "transparent" : backgroundColor,
+        width: size + (borderWidth * 2),
+        height: size + (borderWidth * 2),
       }}
     >
       <svg width={size} height={size} viewBox="0 0 100 100" className="rounded-full overflow-hidden block">
@@ -635,7 +659,7 @@ function ProfileAvatar({
       </svg>
     </span>
   );
-}
+});
 
 function AvatarTile({ preset, selected, onClick }: { preset: AvatarPreset; selected: boolean; onClick: () => void }) {
   return (
@@ -727,9 +751,12 @@ function LoadingScreen() {
 function useProtectedUser() {
   const router = useRouter();
   const auth = useCurrentUser();
-  React.useEffect(() => {
+  const hasRegistered = useRef(false);
+
+  useEffect(() => {
     if (!auth.loading && !auth.userData) router.replace("/");
-    if (auth.userData?.email) {
+    if (auth.userData?.email && !hasRegistered.current) {
+      hasRegistered.current = true;
       import("@/lib/data").then(m => m.registerPushNotifications(auth.userData!.email));
     }
   }, [auth.loading, auth.userData, router]);
@@ -759,25 +786,23 @@ function useProtectedAdmin() {
   return auth;
 }
 
-function SmallStat({ title, value, subtitle, icon: Icon, color, onClick }: { title: string; value: string; subtitle: string; icon: LucideIcon; color: string; onClick?: () => void }) {
+const SmallStat = React.memo(function SmallStat({ title, value, subtitle, icon: Icon, color, onClick }: { title: string; value: string; subtitle: string; icon: LucideIcon; color: string; onClick?: () => void }) {
   return (
     <motion.button
       type="button"
       onClick={onClick}
-      initial={{ opacity: 0, scale: 0.9 }}
+      initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.4, ease: [0.2, 0, 0, 1] }}
-      whileHover={{ scale: 1.03, transition: { duration: 0.2 } }}
-      whileTap={{ scale: 0.97 }}
-      className="rounded-3xl border-2 p-5 text-left"
+      transition={{ duration: 0.3, ease: [0.2, 0, 0, 1] }}
+      whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
+      whileTap={{ scale: 0.98 }}
+      className="rounded-3xl border-2 p-5 text-left shrink-0"
       style={{ backgroundColor: `${color}14`, borderColor: `${color}26` }}
     >
       <div className="flex items-center justify-between">
         <motion.span
           className="rounded-xl p-2"
           style={{ backgroundColor: `${color}26` }}
-          animate={{ rotate: [0, -5, 5, 0] }}
-          transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
         >
           <Icon size={20} style={{ color }} />
         </motion.span>
@@ -788,7 +813,7 @@ function SmallStat({ title, value, subtitle, icon: Icon, color, onClick }: { tit
       <div className="text-[10px]" style={{ color, opacity: 0.6 }}>{subtitle}</div>
     </motion.button>
   );
-}
+});
 
 function DashboardTaskCard({ task, user }: { task: TaskModel; user: UserModel }) {
   const router = useRouter();
@@ -1881,10 +1906,9 @@ export function SignInScreen() {
             setLoading(true);
             try {
               await loginWithGoogle();
-              // The useCurrentUser effect will handle redirection
+              window.location.href = "/admin/dashboard";
             } catch (err: any) {
               setMessage(err.message || "Google login failed.");
-            } finally {
               setLoading(false);
             }
           }}
@@ -1964,20 +1988,147 @@ export function CreateAccountScreen() {
   );
 }
 
+export function AdminRegisterScreen() {
+  const router = useRouter();
+  const auth = useCurrentUser();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [secretKey, setSecretKey] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const ADMIN_CREATION_PASSWORD = "VALENCIA_ADMIN_ACCESS"; // You can change this secret key
+
+  // Auto-redirect if already logged in as Admin
+  useEffect(() => {
+    if (!auth.loading && auth.userData) {
+      if (auth.userData.role === "Admin") {
+        router.replace("/admin/dashboard");
+      } else {
+        router.replace("/dashboard");
+      }
+    }
+  }, [auth.loading, auth.userData, router]);
+
+  async function handleCreate() {
+    if (!name || !email || !password || !confirmPassword || !secretKey) return setMessage("Please enter all fields.");
+    if (password !== confirmPassword) return setMessage("Passwords do not match.");
+    if (password.length < 8) return setMessage("Password must be at least 8 characters.");
+    if (secretKey !== ADMIN_CREATION_PASSWORD) return setMessage("Invalid Admin Creation Password.");
+
+    setLoading(true);
+    try {
+      await registerUser(name.trim(), email.trim().toLowerCase(), password, "Admin");
+      window.location.href = "/admin/login?registered=true";
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Registration failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Screen>
+      <SafeArea className="pt-0">
+        <BackHeader />
+        <h1 className="mt-4 text-[44px] font-bold leading-tight">Admin Registration</h1>
+        <p className="mt-3 text-base text-onSurfaceVariant">Create a supervisor account to manage the workspace.</p>
+        <div className="mt-12 space-y-6">
+          <TextField label="FULL NAME" hint="e.g. Supervisor Name" icon={User} value={name} onChange={setName} />
+          <TextField label="ADMIN EMAIL" hint="admin@distilled.com" icon={Mail} value={email} onChange={setEmail} />
+          <TextField label="CREATE PASSWORD" icon={Lock} type="password" value={password} onChange={setPassword} />
+          <TextField label="CONFIRM PASSWORD" icon={ShieldCheck} type="password" value={confirmPassword} onChange={setConfirmPassword} />
+          <div className="pt-4 border-t border-outlineVariant/10">
+            <TextField
+              label="ADMIN CREATION PASSWORD"
+              hint="Enter the secret organization key"
+              icon={Key}
+              type="password"
+              value={secretKey}
+              onChange={setSecretKey}
+            />
+          </div>
+        </div>
+        <FormError message={message} />
+        <AppButton className="mt-12" disabled={loading} onClick={handleCreate}>
+          {loading && !name ? "Authenticating..." : loading ? "Creating Admin Account..." : "Register as Admin"}
+        </AppButton>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={async () => {
+            if (!secretKey) {
+              setMessage("Please enter the Admin Creation Password to continue with Google.");
+              return;
+            }
+            if (secretKey !== ADMIN_CREATION_PASSWORD) {
+              setMessage("Invalid Admin Creation Password.");
+              return;
+            }
+            setLoading(true);
+            setMessage("");
+            try {
+              await loginWithGoogle("Admin", secretKey);
+              // Force a hard redirect to ensure the new role is picked up
+              window.location.href = "/admin/dashboard";
+            } catch (err: any) {
+              setMessage(err.message || "Google login failed.");
+              setLoading(false);
+            }
+          }}
+          className="mt-4 flex h-14 w-full items-center justify-center rounded-2xl border border-outlineVariant/30 bg-surfaceContainerLowest font-semibold disabled:opacity-50"
+        >
+          {loading && !name ? (
+            "Authenticating with Google..."
+          ) : (
+            <>
+              <Chrome size={24} className="mr-3" /> Register Admin with Google
+            </>
+          )}
+        </button>
+      </SafeArea>
+    </Screen>
+  );
+}
+
 export function DashboardScreen() {
   const router = useRouter();
   const { userData, loading } = useProtectedUser();
   const tasksState = useTasks();
   const notifications = useNotifications(userData?.email);
-  if (loading || !userData) return <LoadingScreen />;
 
-  const myTasks = tasksState.data.filter((task) => task.assignedUserEmails.length === 0 || task.assignedUserEmails.includes(userData.email));
-  const completedTasks = myTasks.filter((task) => completedForUser(task, userData)).length;
-  const activeTasks = tasksState.data.filter((task) => activeForUser(task, userData));
-  const pendingTasks = activeTasks.filter(task => isSubmittedForUser(task, userData) && !mainTaskCompletedForUser(task, userData)).length;
-  const displayTasks = activeTasks.slice(0, 3);
-  const progress = myTasks.length ? Math.round((completedTasks / myTasks.length) * 100) : 0;
-  const unread = notifications.data.filter((item) => !item.isRead).length;
+  // Memoize filtered tasks to prevent re-calculating on every render
+  const taskStats = useMemo(() => {
+    if (!userData || !tasksState.data) return null;
+
+    const myTasks = tasksState.data.filter((task) =>
+      task.assignedUserEmails.length === 0 || task.assignedUserEmails.includes(userData.email)
+    );
+    const activeTasks = tasksState.data.filter((task) => activeForUser(task, userData));
+    const completedCount = myTasks.filter((task) => completedForUser(task, userData)).length;
+    const pendingCount = activeTasks.filter(task => isSubmittedForUser(task, userData) && !mainTaskCompletedForUser(task, userData)).length;
+    const progress = myTasks.length ? Math.round((completedCount / myTasks.length) * 100) : 0;
+
+    return {
+      myTasks,
+      activeTasks,
+      displayTasks: activeTasks.slice(0, 3),
+      completedCount,
+      pendingCount,
+      progress
+    };
+  }, [tasksState.data, userData]);
+
+  const unread = useMemo(() =>
+    notifications.data.filter((item) => !item.isRead).length,
+    [notifications.data]
+  );
+
+  if (loading || !userData || !taskStats) return <LoadingScreen />;
+
+  const { activeTasks, displayTasks, completedCount, pendingCount, progress, myTasks } = taskStats;
 
   return (
     <Screen>
@@ -1996,8 +2147,9 @@ export function DashboardScreen() {
             type="button"
             onClick={() => router.push("/notifications")}
             className="apk-ghost relative rounded-full p-3"
-            animate={unread > 0 ? { rotate: [0, -15, 15, -10, 10, 0] } : {}}
-            transition={{ duration: 0.5, delay: 0.8 }}
+            initial={false}
+            animate={unread > 0 ? { scale: [1, 1.1, 1] } : {}}
+            transition={{ duration: 0.4 }}
           >
             {unread > 0 ? <Bell size={20} className="text-primary" /> : <Bell size={20} />}
             {unread > 0 ? (
@@ -2018,8 +2170,8 @@ export function DashboardScreen() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.15, ease: [0.2, 0, 0, 1] }}
         >
-          <SmallStat title="Credits" value={`${userData.credits}`} subtitle={`${pendingTasks} Pending Review`} icon={Zap} color="#005DA7" onClick={() => router.push("/leaderboard")} />
-          <SmallStat title="Progress" value={`${progress}%`} subtitle={`${completedTasks} of ${myTasks.length} tasks`} icon={Flame} color="#F59E0B" onClick={() => router.push("/performance")} />
+          <SmallStat title="Credits" value={`${userData.credits}`} subtitle={`${pendingCount} Pending Review`} icon={Zap} color="#005DA7" onClick={() => router.push("/leaderboard")} />
+          <SmallStat title="Progress" value={`${progress}%`} subtitle={`${completedCount} of ${myTasks.length} tasks`} icon={Flame} color="#F59E0B" onClick={() => router.push("/performance")} />
         </motion.div>
         <motion.div
           className="mt-10 flex items-center justify-between"
@@ -2068,13 +2220,21 @@ export function TasksScreen() {
   const { userData, loading } = useProtectedUser();
   const tasks = useTasks();
   const [tab, setTab] = useState<"active" | "completed">("active");
-  if (loading || !userData) return <LoadingScreen />;
 
-  const active = tasks.data.filter((task) => activeForUser(task, userData));
-  const completed = tasks.data.filter((task) => completedForUser(task, userData));
-  const visible = tab === "completed" ? completed : active;
-  const grouped = groupByPhase(visible);
-  const phases = Object.keys(grouped).sort();
+  const taskData = useMemo(() => {
+    if (!userData || !tasks.data) return null;
+
+    const active = tasks.data.filter((task) => activeForUser(task, userData));
+    const completed = tasks.data.filter((task) => completedForUser(task, userData));
+    const visible = tab === "completed" ? completed : active;
+    const grouped = groupByPhase(visible);
+    const phases = Object.keys(grouped).sort();
+
+    return { active, completed, visible, grouped, phases };
+  }, [tasks.data, userData, tab]);
+
+  if (loading || !userData || !taskData) return <LoadingScreen />;
+  const { grouped, phases } = taskData;
 
   return (
     <Screen>
@@ -2105,13 +2265,13 @@ export function TasksScreen() {
           ))}
         </div>
         <div className="px-6 py-6">
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="popLayout">
             <motion.div
               key={tab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3 }}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
             >
               {phases.length === 0 ? (
                 <div className="py-20 text-center text-onSurfaceVariant">{tab === "active" ? "No active tasks!" : "Completed tasks will appear here"}</div>
@@ -2147,8 +2307,14 @@ export function LeaderboardScreen() {
   const router = useRouter();
   const { userData, loading } = useProtectedUser();
   const users = useUsers();
+
+  const interns = useMemo(() => {
+    return users.data
+      .filter((user) => user.role !== "Admin")
+      .sort((a, b) => b.credits - a.credits);
+  }, [users.data]);
+
   if (loading || !userData) return <LoadingScreen />;
-  const interns = users.data.filter((user) => user.role !== "Admin").sort((a, b) => b.credits - a.credits);
 
   return (
     <Screen>
@@ -2210,7 +2376,7 @@ export function LeaderboardScreen() {
                 <motion.div key={intern.email} variants={staggerItem} className="rounded-3xl border-2 p-5" style={{ backgroundColor: `${color}1A`, borderColor: `${color}4D` }}>
                   <div className="flex items-center">
                     <span className="relative flex h-[42px] w-[42px] items-center justify-center rounded-full" style={{ backgroundColor: `${color}33` }}>
-                      <motion.div animate={{ rotate: [0, -10, 10, 0] }} transition={{ repeat: Infinity, duration: 3, delay: index }}>
+                      <motion.div initial={{ scale: 0.5, rotate: -20 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 200, delay: 0.2 + index * 0.1 }}>
                         <Icon size={24} style={{ color }} />
                       </motion.div>
                     </span>
@@ -3694,7 +3860,14 @@ export function AdminLoginScreen() {
         <div className="mt-12 space-y-6">
           <TextField label="ADMIN EMAIL" hint="admin@distilled.com" icon={Mail} value={email} onChange={setEmail} />
           <TextField label="PASSWORD" hint="Enter admin password" icon={Lock} type="password" value={password} onChange={setPassword} />
-          <div className="flex justify-end px-2">
+          <div className="flex justify-between items-center px-2">
+            <button
+              type="button"
+              onClick={() => router.push("/admin/register")}
+              className="text-sm font-bold text-onSurfaceVariant/60 active:opacity-60"
+            >
+              Create Admin Account
+            </button>
             <button
               type="button"
               onClick={handleResetPassword}
@@ -3714,10 +3887,9 @@ export function AdminLoginScreen() {
             setLoading(true);
             try {
               await loginWithGoogle();
-              // The useCurrentUser effect will handle redirection
+              window.location.href = "/admin/dashboard";
             } catch (err: any) {
               setMessage(err.message || "Google login failed.");
-            } finally {
               setLoading(false);
             }
           }}
@@ -3735,10 +3907,27 @@ export function AdminDashboardScreen() {
   const auth = useProtectedAdmin();
   const users = useUsers();
   const notifications = useNotifications(auth.userData?.email);
-  if (auth.loading || !auth.userData || auth.userData.role !== "Admin") return <LoadingScreen />;
-  const interns = users.data.filter((user) => user.role !== "Admin");
-  const pending = interns.flatMap((intern) => intern.transactions.filter((tx) => tx.status === "pending").map((tx) => ({ intern, tx }))).sort((a, b) => parseDate(b.tx.date).getTime() - parseDate(a.tx.date).getTime());
-  const unreadCount = notifications.data.filter(n => !n.isRead).length;
+
+  const stats = useMemo(() => {
+    if (!users.data.length) return null;
+    const interns = users.data.filter((user) => user.role !== "Admin");
+    const pending = interns
+      .flatMap((intern) =>
+        intern.transactions
+          .filter((tx) => tx.status === "pending")
+          .map((tx) => ({ intern, tx }))
+      )
+      .sort((a, b) => parseDate(b.tx.date).getTime() - parseDate(a.tx.date).getTime());
+    return { interns, pending };
+  }, [users.data]);
+
+  const unreadCount = useMemo(() =>
+    notifications.data.filter(n => !n.isRead).length,
+    [notifications.data]
+  );
+
+  if (auth.loading || !auth.userData || auth.userData.role !== "Admin" || !stats) return <LoadingScreen />;
+  const { interns, pending } = stats;
 
   return (
     <Screen>
@@ -3791,22 +3980,31 @@ export function AdminDashboardScreen() {
   );
 }
 
-function AdminMetric({ title, value, accent, onClick }: { title: string; value: string; accent?: boolean; onClick: () => void }) {
+
+
+const AdminMetric = React.memo(function AdminMetric({ title, value, accent, onClick }: { title: string; value: string; accent?: boolean; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} className={cn("apk-ghost rounded-[32px] p-6 text-left transition-all active:scale-[0.98]", accent ? "bg-primary/10 border-primary/20" : "bg-surfaceContainerLow border-outlineVariant/5")}>
       <span className="text-xs font-black tracking-widest text-onSurfaceVariant/60 uppercase">{title}</span>
       <span className={cn("mt-2 block text-[36px] font-black leading-none tracking-tight", accent ? "text-primary" : "text-onSurface")}>{value}</span>
     </button>
   );
-}
+});
 
 export function InternDirectoryScreen() {
   const router = useRouter();
   const auth = useProtectedAdmin();
   const users = useUsers();
   const [search, setSearch] = useState("");
+
+  const interns = useMemo(() => {
+    const term = search.toLowerCase();
+    return users.data.filter(
+      (user) => user.role !== "Admin" && user.fullName.toLowerCase().includes(term)
+    );
+  }, [users.data, search]);
+
   if (auth.loading || !auth.userData || auth.userData.role !== "Admin") return <LoadingScreen />;
-  const interns = users.data.filter((user) => user.role !== "Admin" && user.fullName.toLowerCase().includes(search.toLowerCase()));
   return (
     <Screen>
       <SafeArea bottomNav>
